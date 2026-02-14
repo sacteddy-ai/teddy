@@ -1708,10 +1708,13 @@ async function startRealtimeVoice() {
           type: "session.update",
           session: {
             type: "realtime",
-            turn_detection: { type: "server_vad" },
-            input_audio_transcription: {
-              model: "whisper-1",
-              language: lang
+            audio: {
+              input: {
+                transcription: {
+                  model: "whisper-1",
+                  language: lang
+                }
+              }
             }
           }
         });
