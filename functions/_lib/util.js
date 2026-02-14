@@ -45,7 +45,9 @@ export function removeKoreanParticleSuffix(value) {
     "도",
     "고",
     "만",
-    "까지"
+    "까지",
+    "에서",
+    "부터"
   ];
 
   // Strip up to a few stacked endings, e.g. "마늘짱아치이고" -> "마늘짱아치".
@@ -103,7 +105,28 @@ export function getDefaultStopwordMap() {
     "입니다",
     "이고",
     "하고",
-    "및"
+    "및",
+    // Spatial / sequencing filler words (Korean)
+    "그",
+    "옆",
+    "그옆",
+    "다음",
+    "그다음",
+    "왼쪽",
+    "오른쪽",
+    "가운데",
+    "중간",
+    "위쪽",
+    "아래쪽",
+    "앞쪽",
+    "뒤쪽",
+    "윗칸",
+    "아랫칸",
+    "칸",
+    "선반",
+    "서랍",
+    "냉장실",
+    "냉동실"
   ];
 
   const map = new Map();
@@ -116,6 +139,35 @@ export function getDefaultStopwordMap() {
 
   stopwordMapCache = map;
   return map;
+}
+
+export function isLikelySpatialOrOrdinalToken(token) {
+  const t = normalizeWord(token);
+  if (!t) {
+    return false;
+  }
+
+  // Ordinals / slot descriptors, e.g. "첫번째거", "3번째", "둘째"
+  if (t.includes("번째") || t.endsWith("째")) {
+    return true;
+  }
+
+  // Locative tails often used in spatial descriptions, e.g. "위에서", "냉장실에서"
+  if (t.endsWith("에서") || t.endsWith("부터")) {
+    return true;
+  }
+
+  // "아랫칸", "윗칸", "2칸" etc.
+  if (t.endsWith("칸") && t.length <= 5) {
+    return true;
+  }
+
+  // Common combined fillers without spaces, e.g. "그옆"
+  if (/^그(옆|다음|위|아래|왼쪽|오른쪽|가운데|중간)/u.test(t)) {
+    return true;
+  }
+
+  return false;
 }
 
 export function normalizeReviewPhraseValue(value, stopwordMap = null) {
@@ -151,6 +203,9 @@ export function normalizeReviewPhraseValue(value, stopwordMap = null) {
       continue;
     }
     if (/^\d+$/.test(token)) {
+      continue;
+    }
+    if (isLikelySpatialOrOrdinalToken(token)) {
       continue;
     }
 

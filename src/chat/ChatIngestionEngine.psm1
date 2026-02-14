@@ -87,7 +87,9 @@ function Remove-KoreanParticleSuffix {
     "\uB3C4", # do
     "\uACE0", # go
     "\uB9CC", # man
-    "\uAE4C\uC9C0" # kkaji
+    "\uAE4C\uC9C0", # kkaji
+    "\uC5D0\uC11C", # eseo
+    "\uBD80\uD130" # buteo
   )
 
   $trimmed = $Value
@@ -119,7 +121,13 @@ function Get-DefaultStopwordMap {
     "\uC774\uAC70", "\uC800\uAC70", "\uADF8\uAC70", "\uC774\uAC74", "\uC800\uAC74", "\uADF8\uAC74",
     "\uC774\uAC70\uB294", "\uC800\uAC70\uB294", "\uADF8\uAC70\uB294", "\uADF8\uB9AC\uACE0", "\uB610",
     "\uC774\uAC70\uC57C", "\uC800\uAC70\uC57C", "\uADF8\uAC70\uC57C", "\uC785\uB2C8\uB2E4",
-    "\uC774\uACE0", "\uD558\uACE0", "\uBC0F"
+    "\uC774\uACE0", "\uD558\uACE0", "\uBC0F",
+    # Spatial / sequencing filler words (Korean)
+    "\uADF8", "\uC606", "\uADF8\uC606", "\uB2E4\uC74C", "\uADF8\uB2E4\uC74C",
+    "\uC67C\uCABD", "\uC624\uB978\uCABD", "\uAC00\uC6B4\uB370", "\uC911\uAC04",
+    "\uC704\uCABD", "\uC544\uB798\uCABD", "\uC55E\uCABD", "\uB4A4\uCABD",
+    "\uC717\uCE78", "\uC544\uB7AB\uCE78", "\uCE78", "\uC120\uBC18", "\uC11C\uB78D",
+    "\uB0C9\uC7A5\uC2E4", "\uB0C9\uB3D9\uC2E4"
   )
 
   $map = @{}
@@ -131,6 +139,49 @@ function Get-DefaultStopwordMap {
   }
 
   return $map
+}
+
+function Test-IsSpatialOrOrdinalToken {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Token
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Token)) {
+    return $false
+  }
+
+  $t = Normalize-Whitespace -Value (Normalize-Word -Value $Token)
+  if ([string]::IsNullOrWhiteSpace($t)) {
+    return $false
+  }
+
+  $ordinalMarker = Convert-UnicodeEscapeLiterals -Value "\uBC88\uC9F8" # "번째"
+  if (-not [string]::IsNullOrWhiteSpace($ordinalMarker) -and $t.Contains($ordinalMarker)) {
+    return $true
+  }
+
+  $ordinalSuffix = Convert-UnicodeEscapeLiterals -Value "\uC9F8" # "째"
+  if (-not [string]::IsNullOrWhiteSpace($ordinalSuffix) -and $t.EndsWith($ordinalSuffix, [System.StringComparison]::Ordinal)) {
+    return $true
+  }
+
+  $locativeTail = Convert-UnicodeEscapeLiterals -Value "\uC5D0\uC11C" # "에서"
+  if (-not [string]::IsNullOrWhiteSpace($locativeTail) -and $t.EndsWith($locativeTail, [System.StringComparison]::Ordinal)) {
+    return $true
+  }
+
+  $fromTail = Convert-UnicodeEscapeLiterals -Value "\uBD80\uD130" # "부터"
+  if (-not [string]::IsNullOrWhiteSpace($fromTail) -and $t.EndsWith($fromTail, [System.StringComparison]::Ordinal)) {
+    return $true
+  }
+
+  $slotSuffix = Convert-UnicodeEscapeLiterals -Value "\uCE78" # "칸"
+  if (-not [string]::IsNullOrWhiteSpace($slotSuffix) -and $t.EndsWith($slotSuffix, [System.StringComparison]::Ordinal) -and $t.Length -le 5) {
+    return $true
+  }
+
+  return $false
 }
 
 function Normalize-ReviewPhraseValue {
@@ -169,6 +220,9 @@ function Normalize-ReviewPhraseValue {
       continue
     }
     if ($tokenValue -match "^\d+$") {
+      continue
+    }
+    if (Test-IsSpatialOrOrdinalToken -Token $tokenValue) {
       continue
     }
 
@@ -1036,6 +1090,10 @@ function Get-FuzzyCandidatePhrases {
           continue
         }
         if ($tokenValue -match "^\d+$") {
+          continue
+        }
+        if (Test-IsSpatialOrOrdinalToken -Token $tokenValue) {
+          $removedStopwordCount++
           continue
         }
         $filteredTokens += $tokenValue

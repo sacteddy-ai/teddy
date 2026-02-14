@@ -68,6 +68,15 @@ function Run-Tests {
   Assert-True -Condition (@($sweetPotatoParsed.commands | Where-Object { $_.ingredient_key -eq "sweet_potato" }).Count -eq 1) -Message "Korean sweet potato phrase should be recognized"
   Assert-True -Condition (@($sweetPotatoParsed.commands | Where-Object { $_.ingredient_key -eq "sweet_potato" -and $_.action -eq "add" }).Count -eq 1) -Message "Korean sweet potato phrase should stay add action"
 
+  # Spatial / sequencing filler words should not become review queue candidates.
+  $spatialText = ([char]0xC704).ToString()+([char]0xC5D0)+([char]0xC11C)+([char]0xBD80)+([char]0xD130)+' '+([char]0xC67C)+([char]0xCABD)+' '+([char]0xCCAB)+([char]0xBC88)+([char]0xC9F8)+([char]0xAC70)+([char]0xB294)+' '+([char]0xAE40)+([char]0xCE58)+' '+([char]0xADF8)+([char]0xC606)+([char]0xC740)+' '+([char]0xB450)+([char]0xBD80)+' '+([char]0xADF8)+' '+([char]0xB2E4)+([char]0xC74C)+([char]0xC740)+' '+([char]0xAC10)+([char]0xC790)+', '+([char]0xADF8)+' '+([char]0xC544)+([char]0xB7AB)+([char]0xCE78)+([char]0xC5D0)+([char]0xC11C)+' '+([char]0xC67C)+([char]0xCABD)+' '+([char]0xCCAB)+([char]0xBC88)+([char]0xC9F8)+([char]0xAEBC)+([char]0xB294)+' '+([char]0xACE0)+([char]0xAD6C)+([char]0xB9C8)
+  $spatialParsed = Parse-ConversationCommands -Text $spatialText
+  Assert-True -Condition (@($spatialParsed.commands | Where-Object { $_.ingredient_key -eq "kimchi" }).Count -eq 1) -Message "Spatial phrase should still recognize kimchi"
+  Assert-True -Condition (@($spatialParsed.commands | Where-Object { $_.ingredient_key -eq "tofu" }).Count -eq 1) -Message "Spatial phrase should still recognize tofu"
+  Assert-True -Condition (@($spatialParsed.commands | Where-Object { $_.ingredient_key -eq "potato" }).Count -eq 1) -Message "Spatial phrase should still recognize potato"
+  Assert-True -Condition (@($spatialParsed.commands | Where-Object { $_.ingredient_key -eq "sweet_potato" }).Count -eq 1) -Message "Spatial phrase should still recognize sweet potato"
+  Assert-True -Condition (@($spatialParsed.review_candidates).Count -eq 0) -Message "Spatial/sequencing filler words should not create review candidates"
+
   $godeulText = ([char]0xC774).ToString()+([char]0xAC70)+([char]0xB294)+' '+([char]0xACE0)+([char]0xB4E4)+([char]0xBE7C)+([char]0xAE30)+([char]0xC57C)
   $godeulParsed = Parse-ConversationCommands -Text $godeulText -VisionDetectedItems @()
   Assert-True -Condition (@($godeulParsed.commands | Where-Object { $_.ingredient_key -eq "godeulppaegi" }).Count -eq 1) -Message "Korean godeulppaegi phrase should be recognized"

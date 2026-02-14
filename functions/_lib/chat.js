@@ -4,6 +4,7 @@ import {
   normalizeWord,
   removeKoreanParticleSuffix,
   getDefaultStopwordMap,
+  isLikelySpatialOrOrdinalToken,
   normalizeReviewPhraseValue,
   normalizeIngredientKey
 } from "./util.js";
@@ -117,6 +118,9 @@ function tokenizeClause(clause) {
       continue;
     }
     if (/^\d+$/.test(token)) {
+      continue;
+    }
+    if (isLikelySpatialOrOrdinalToken(token)) {
       continue;
     }
 
@@ -375,4 +379,3 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
     finalize_requested: finalizeRequested
   };
 }
-
