@@ -15,6 +15,7 @@ let realtimeIngestChain = Promise.resolve();
 let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
 let realtimeLoggedEventTypes = new Set();
+let realtimeTranscriptionFallbackApplied = false;
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
@@ -1664,6 +1665,7 @@ async function startRealtimeVoice() {
 
   clearRealtimeLog();
   realtimeLoggedEventTypes = new Set();
+  realtimeTranscriptionFallbackApplied = false;
   setRealtimeStatus(t("voice_starting"));
   try {
     const secret = await fetchRealtimeClientSecret();
@@ -1715,7 +1717,7 @@ async function startRealtimeVoice() {
             audio: {
               input: {
                 transcription: {
-                  model: "whisper-1",
+                  model: "gpt-4o-mini-transcribe",
                   language: lang
                 },
                 turn_detection: {
@@ -1845,6 +1847,7 @@ function stopRealtimeVoice() {
   realtimeLastIngestedText = "";
   realtimeLastIngestedAt = 0;
   realtimeLoggedEventTypes = new Set();
+  realtimeTranscriptionFallbackApplied = false;
   setRealtimeStatus(t("voice_stopped"));
   updateQuickTalkButton();
 }
@@ -1962,6 +1965,46 @@ function queueRealtimeSpeechIngest(finalText) {
     });
 }
 
+function formatRealtimeError(err) {
+  const e = err && typeof err === "object" ? err : {};
+  const message = typeof e.message === "string" ? e.message.trim() : "";
+  const code = typeof e.code === "string" ? e.code.trim() : "";
+  const type = typeof e.type === "string" ? e.type.trim() : "";
+
+  const bits = [];
+  if (message) bits.push(message);
+  if (code) bits.push(code);
+  if (!message && type) bits.push(type);
+  return bits.join(" | ") || "unknown error";
+}
+
+function maybeApplyRealtimeTranscriptionFallback() {
+  if (realtimeTranscriptionFallbackApplied) {
+    return;
+  }
+  realtimeTranscriptionFallbackApplied = true;
+
+  // Try switching ASR model once. This will only help for subsequent turns.
+  try {
+    const lang = currentLang === "ko" ? "ko" : "en";
+    realtimeSendEvent({
+      type: "session.update",
+      session: {
+        type: "realtime",
+        audio: {
+          input: {
+            transcription: {
+              model: "whisper-1",
+              language: lang
+            }
+          }
+        }
+      }
+    });
+    appendRealtimeLogLine("system", "Applied transcription fallback (whisper-1). Speak again.");
+  } catch {}
+}
+
 function handleRealtimeEvent(evt) {
   const type = String(evt?.type || "").trim();
   if (!type) {
@@ -1974,6 +2017,14 @@ function handleRealtimeEvent(evt) {
     const msg = evt?.error?.message || evt?.message || "Unknown realtime error.";
     appendRealtimeLogLine("error", msg);
     setRealtimeStatus(tf("voice_error_prefix", { msg }));
+    return;
+  }
+
+  if (type === "conversation.item.input_audio_transcription.failed") {
+    const errMsg = formatRealtimeError(evt?.error);
+    appendRealtimeLogLine("stt_failed", errMsg);
+    setRealtimeStatus(tf("voice_error_prefix", { msg: errMsg }));
+    maybeApplyRealtimeTranscriptionFallback();
     return;
   }
 
