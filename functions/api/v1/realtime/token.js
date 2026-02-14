@@ -15,6 +15,40 @@ function resolveOpenAiRealtimeConfig(env) {
   return { apiKey, baseUrl, model, voice, instructions, transcriptionModel, transcriptionLanguage };
 }
 
+async function requestClientSecret(cfg, body) {
+  const url = `${cfg.baseUrl.replace(/\/+$/, "")}/realtime/client_secrets`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const text = await res.text();
+  let parsed = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = null;
+  }
+
+  if (!res.ok) {
+    const errMsg =
+      parsed?.error?.message ||
+      parsed?.message ||
+      text ||
+      `Realtime token request failed: ${res.status}`;
+    const err = new Error(errMsg);
+    err.status = res.status;
+    err.raw = text;
+    throw err;
+  }
+
+  return parsed;
+}
+
 function isSameOriginRequest(context) {
   const expected = new URL(context.request.url).origin;
   const origin = safeString(context.request.headers.get("Origin"), "");
@@ -58,15 +92,33 @@ export async function onRequest(context) {
     const transcriptionModel = safeString(payload?.transcription_model, cfg.transcriptionModel);
     const transcriptionLanguage = safeString(payload?.transcription_language, cfg.transcriptionLanguage);
 
-    const session = {
+    const sessionPrimary = {
+      type: "realtime",
+      model,
+      instructions,
+      turn_detection: { type: "server_vad" },
+      input_audio_transcription: transcriptionModel
+        ? {
+            model: transcriptionModel,
+            language: transcriptionLanguage || undefined
+          }
+        : undefined,
+      audio: {
+        input: {
+          // Helps for phone mic in near-field situations.
+          noise_reduction: { type: "near_field" }
+        },
+        output: { voice }
+      }
+    };
+
+    const sessionFallback = {
       type: "realtime",
       model,
       instructions,
       audio: {
         input: {
-          // Helps for phone mic in near-field situations.
           noise_reduction: { type: "near_field" },
-          turn_detection: { type: "server_vad" },
           transcription: transcriptionModel
             ? {
                 model: transcriptionModel,
@@ -78,35 +130,20 @@ export async function onRequest(context) {
       }
     };
 
-    const body = {
-      expires_after: { anchor: "created_at", seconds: expiresSeconds },
-      session
+    const baseBody = {
+      expires_after: { anchor: "created_at", seconds: expiresSeconds }
     };
 
-    const url = `${cfg.baseUrl.replace(/\/+$/, "")}/realtime/client_secrets`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
-
-    const text = await res.text();
     let parsed = null;
     try {
-      parsed = text ? JSON.parse(text) : null;
-    } catch {
-      parsed = null;
-    }
-
-    if (!res.ok) {
-      const errMsg =
-        parsed?.error?.message ||
-        parsed?.message ||
-        `Realtime token request failed: ${res.status}`;
-      throw new Error(errMsg);
+      parsed = await requestClientSecret(cfg, { ...baseBody, session: sessionPrimary });
+    } catch (err) {
+      const msg = safeString(err?.message, "");
+      if (/Unknown parameter/i.test(msg) || /Missing required parameter/i.test(msg)) {
+        parsed = await requestClientSecret(cfg, { ...baseBody, session: sessionFallback });
+      } else {
+        throw err;
+      }
     }
 
     const value = safeString(parsed?.value, "");

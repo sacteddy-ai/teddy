@@ -1708,15 +1708,10 @@ async function startRealtimeVoice() {
           type: "session.update",
           session: {
             type: "realtime",
-            audio: {
-              input: {
-                noise_reduction: { type: "near_field" },
-                transcription: {
-                  model: "whisper-1",
-                  language: lang
-                },
-                turn_detection: { type: "server_vad" }
-              }
+            turn_detection: { type: "server_vad" },
+            input_audio_transcription: {
+              model: "whisper-1",
+              language: lang
             }
           }
         });
@@ -1725,14 +1720,31 @@ async function startRealtimeVoice() {
       }
     });
 
-    dc.addEventListener("message", (event) => {
+    dc.addEventListener("message", async (event) => {
       const raw = event?.data;
-      if (!raw || typeof raw !== "string") {
+      if (!raw) {
         return;
       }
+
+      let text = "";
+      try {
+        if (typeof raw === "string") {
+          text = raw;
+        } else if (raw instanceof ArrayBuffer) {
+          text = new TextDecoder().decode(new Uint8Array(raw));
+        } else if (typeof raw === "object" && typeof raw.text === "function") {
+          // Blob (Safari often uses this)
+          text = await raw.text();
+        } else {
+          return;
+        }
+      } catch {
+        return;
+      }
+
       let obj = null;
       try {
-        obj = JSON.parse(raw);
+        obj = text ? JSON.parse(text) : null;
       } catch {
         return;
       }
