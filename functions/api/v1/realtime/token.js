@@ -61,7 +61,6 @@ export async function onRequest(context) {
     const session = {
       type: "realtime",
       model,
-      voice,
       instructions,
       audio: {
         input: {
@@ -125,4 +124,3 @@ export async function onRequest(context) {
     return errorResponse(context, err?.message || String(err));
   }
 }
-
