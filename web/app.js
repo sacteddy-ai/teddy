@@ -183,7 +183,7 @@ const I18N = {
     label_storage_type: "보관 방식",
     storage_refrigerated: "냉장",
     storage_frozen: "냉동",
-    storage_room: "실온",
+    storage_room: "상온",
     label_quantity: "수량",
     label_unit: "단위",
     label_ocr_raw_text: "OCR 원문 (선택)",
