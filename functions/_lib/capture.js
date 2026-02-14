@@ -63,6 +63,7 @@ export async function upsertIngredientReviewCandidates(context, userId, sessionI
   const queue = await getArray(context.env, qKey);
 
   const pendingIndex = new Map();
+  const ignoredGlobalIndex = new Map();
   for (let i = 0; i < queue.length; i += 1) {
     const entry = queue[i];
     if (!entry) {
@@ -78,6 +79,15 @@ export async function upsertIngredientReviewCandidates(context, userId, sessionI
     if (status === "pending" && normalizedPhrase) {
       pendingIndex.set(normalizedPhrase, i);
     }
+
+    // Persisted ignore: once a phrase is globally ignored, do not re-add it to the review queue.
+    if (status === "ignored" && normalizedPhrase) {
+      const scopeRaw = entry.ignore_scope ? String(entry.ignore_scope).trim().toLowerCase() : "global";
+      const scope = scopeRaw === "session" ? "session" : "global";
+      if (scope === "global") {
+        ignoredGlobalIndex.set(normalizedPhrase, true);
+      }
+    }
   }
 
   const touchedById = new Map();
@@ -91,6 +101,9 @@ export async function upsertIngredientReviewCandidates(context, userId, sessionI
     }
     const normalizedPhrase = normalizeReviewPhrase(phrase);
     if (!normalizedPhrase) {
+      continue;
+    }
+    if (ignoredGlobalIndex.has(normalizedPhrase)) {
       continue;
     }
 
@@ -328,6 +341,7 @@ export async function resolveIngredientReviewQueueItem(context, userId, queueIte
   } else if (action === "ignore") {
     target.status = "ignored";
     target.resolved_action = "ignore";
+    target.ignore_scope = applyToSession ? "session" : "global";
   } else {
     throw new Error("action must be one of: map, ignore.");
   }
@@ -404,4 +418,3 @@ export async function autoMapPendingUnknownReviewItemsToSessionDraft(context, se
 
   return { mapped_count: mappedCount, skipped_count: skippedCount, mapped_item_ids: mappedItemIds };
 }
-
