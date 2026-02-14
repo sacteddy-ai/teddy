@@ -131,20 +131,35 @@ function tokenizeClause(clause) {
 }
 
 function stripAmbiguousTrailingParticleIfKnownAlias(token, aliasLookup) {
-  if (!aliasLookup || !token) {
+  if (!token) {
     return token;
   }
 
-  const ambiguous = ["도", "만", "고"];
-  for (const suffix of ambiguous) {
+  const stopwordMap = getDefaultStopwordMap();
+  const hasAlias = (value) => Boolean(aliasLookup && aliasLookup.has(value));
+  const shouldStripLocative = (base) =>
+    Boolean(base && (hasAlias(base) || stopwordMap.has(base) || isLikelySpatialOrOrdinalToken(base)));
+
+  // Some tails are ambiguous as standalone syllables. Strip only when the base is a known alias.
+  const aliasOnlySuffixes = ["도", "만", "고"];
+  for (const suffix of aliasOnlySuffixes) {
     if (!token.endsWith(suffix) || token.length <= suffix.length) {
       continue;
     }
     const base = token.slice(0, -suffix.length);
-    if (!base) {
+    if (base && hasAlias(base)) {
+      return base;
+    }
+  }
+
+  // Strip locative contractions only when the base is clearly spatial or a known ingredient alias.
+  const locativeSuffixes = ["엔", "에"];
+  for (const suffix of locativeSuffixes) {
+    if (!token.endsWith(suffix) || token.length <= suffix.length) {
       continue;
     }
-    if (aliasLookup.has(base)) {
+    const base = token.slice(0, -suffix.length);
+    if (shouldStripLocative(base)) {
       return base;
     }
   }

@@ -64,6 +64,8 @@ async function classifyPhrasesWithOpenAI(context, phrases, cfg) {
     "Rules:",
     "- Be conservative: only label 'spatial' when it is clearly spatial/order/filler.",
     "- If uncertain between food_item and spatial, choose food_item.",
+    "- If uncertain between food_item and other, choose food_item.",
+    "- Use 'other' ONLY for phrases that are clearly not a food item (verbs like 'have/exists', greetings, etc).",
     "- Do not translate phrases. Keep them verbatim.",
     "Return ONLY JSON: {\"results\":[{\"phrase\":\"...\",\"category\":\"spatial|food_item|other\"}]}."
   ].join("\n");
@@ -164,10 +166,10 @@ export async function filterReviewCandidatesWithPhraseClassifier(context, userId
     const cached = cacheItems[key];
     if (cached && isCacheEntryFresh(cached, cfg.cacheDays) && typeof cached.category === "string") {
       const category = String(cached.category).trim().toLowerCase();
-      if (category === "spatial") {
-        discardKeys.add(key);
-      } else {
+      if (category === "food_item") {
         keepKeys.add(key);
+      } else {
+        discardKeys.add(key);
       }
       continue;
     }
@@ -203,10 +205,10 @@ export async function filterReviewCandidatesWithPhraseClassifier(context, userId
         source: "openai"
       };
 
-      if (category === "spatial") {
-        discardKeys.add(meta.key);
-      } else {
+      if (category === "food_item") {
         keepKeys.add(meta.key);
+      } else {
+        discardKeys.add(meta.key);
       }
     }
 

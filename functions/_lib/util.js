@@ -72,6 +72,7 @@ export function removeKoreanParticleSuffix(value) {
 
     { suffix: "이고", type: "simple" },
     { suffix: "하고", type: "simple" },
+    { suffix: "이랑", type: "simple" },
     { suffix: "까지", type: "simple" },
     { suffix: "에서", type: "simple" },
     { suffix: "부터", type: "simple" }
@@ -153,6 +154,10 @@ export function getDefaultStopwordMap() {
     "중간",
     "위쪽",
     "아래쪽",
+    "위",
+    "아래",
+    "앞",
+    "뒤",
     "앞쪽",
     "뒤쪽",
     "윗칸",
@@ -162,6 +167,13 @@ export function getDefaultStopwordMap() {
     "서랍",
     "냉장실",
     "냉동실",
+    // Existential verbs often present in speech transcripts: "... 오이가 있어"
+    "있어",
+    "있다",
+    "있어요",
+    "있습니다",
+    "있고",
+    "있고요",
     "맨",
     "첨",
     "맨첨",
