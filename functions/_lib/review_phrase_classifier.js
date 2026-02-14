@@ -79,7 +79,7 @@ async function classifyPhrasesWithOpenAI(context, phrases, cfg) {
     response_format: { type: "json_object" }
   };
 
-  const url = `${baseUrl.replace(/\\/+$/, "")}/chat/completions`;
+  const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
