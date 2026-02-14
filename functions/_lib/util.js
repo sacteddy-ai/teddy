@@ -92,8 +92,8 @@ export function removeKoreanParticleSuffix(value) {
       }
 
       trimmed = base;
-        changed = true;
-        break;
+      changed = true;
+      break;
     }
     if (!changed) {
       break;
