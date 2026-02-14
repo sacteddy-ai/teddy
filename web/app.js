@@ -16,6 +16,12 @@ let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
+let realtimeQuotaBlocked = false;
+
+let browserSpeechRecognizer = null;
+let browserSpeechRunning = false;
+let browserSpeechFinalText = "";
+let browserSpeechInterimText = "";
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
@@ -75,6 +81,7 @@ const I18N = {
     conversational_capture_title: "Conversational Capture",
     btn_take_photo: "Take Photo",
     btn_quick_talk: "Talk",
+    btn_quick_talk_browser: "Talk (Browser)",
     btn_stop_talk: "Stop Talking",
     quick_capture_hint: "Choose storage, then take a photo or talk. We'll add items automatically.",
     label_session_id: "Session ID",
@@ -156,6 +163,8 @@ const I18N = {
     voice_start_failed: "Voice start failed: {msg}",
     voice_stopped: "Voice session stopped.",
     voice_error_prefix: "Error: {msg}",
+    voice_quota_exceeded:
+      "OpenAI quota exceeded. Voice transcription via OpenAI is disabled until billing is enabled. Using browser speech recognition instead.",
     voice_draft_updated: "Draft updated from speech.",
     voice_draft_update_failed: "Draft update failed: {msg}",
     voice_saved: "Saved to inventory.",
@@ -213,6 +222,7 @@ const I18N = {
     conversational_capture_title: "대화형 캡처",
     btn_take_photo: "사진 찍기",
     btn_quick_talk: "말하기",
+    btn_quick_talk_browser: "말하기 (브라우저)",
     btn_stop_talk: "말하기 중지",
     quick_capture_hint: "보관 방식을 고르고, 사진을 찍거나 말해보세요. 자동으로 추가해요.",
     label_session_id: "세션 ID",
@@ -293,6 +303,8 @@ const I18N = {
     voice_start_failed: "음성 시작 실패: {msg}",
     voice_stopped: "음성 세션 종료됨.",
     voice_error_prefix: "오류: {msg}",
+    voice_quota_exceeded:
+      "OpenAI 크레딧/쿼터가 부족해서 음성 인식이 막혔어요. 결제/크레딧을 추가하면 다시 동작합니다. 지금은 브라우저 음성 인식을 사용합니다.",
     voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
     voice_saved: "인벤토리에 저장했어요.",
@@ -654,8 +666,14 @@ function updateQuickTalkButton() {
   if (!btn) {
     return;
   }
-  const running = isRealtimeConnected();
-  btn.textContent = running ? t("btn_stop_talk") : t("btn_quick_talk");
+  const running = isRealtimeConnected() || browserSpeechRunning;
+  if (running) {
+    btn.textContent = t("btn_stop_talk");
+  } else if (realtimeQuotaBlocked) {
+    btn.textContent = t("btn_quick_talk_browser");
+  } else {
+    btn.textContent = t("btn_quick_talk");
+  }
   btn.setAttribute("aria-pressed", running ? "true" : "false");
 }
 
@@ -1923,7 +1941,7 @@ async function maybeAutoFinalizeSpeechCapture(messageResult) {
   }
 }
 
-function queueRealtimeSpeechIngest(finalText) {
+function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   const text = String(finalText || "").trim();
   if (!text) {
     return;
@@ -1947,7 +1965,7 @@ function queueRealtimeSpeechIngest(finalText) {
   realtimeIngestChain = realtimeIngestChain
     .then(() =>
       sendCaptureMessagePayload({
-        source_type: "realtime_voice",
+        source_type: sourceType,
         text,
         vision_detected_items: []
       })
@@ -1963,6 +1981,96 @@ function queueRealtimeSpeechIngest(finalText) {
       setCaptureError(msg);
       setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
     });
+}
+
+function getBrowserSpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function isBrowserSpeechSupported() {
+  return Boolean(getBrowserSpeechRecognitionCtor());
+}
+
+function startBrowserSpeechRecognition() {
+  const Ctor = getBrowserSpeechRecognitionCtor();
+  if (!Ctor) {
+    throw new Error("Browser speech recognition is not supported in this browser.");
+  }
+
+  browserSpeechFinalText = "";
+  browserSpeechInterimText = "";
+
+  const recognizer = new Ctor();
+  browserSpeechRecognizer = recognizer;
+  browserSpeechRunning = true;
+
+  recognizer.lang = currentLang === "ko" ? "ko-KR" : "en-US";
+  recognizer.continuous = false;
+  recognizer.interimResults = true;
+  recognizer.maxAlternatives = 1;
+
+  recognizer.onresult = (event) => {
+    let finalText = browserSpeechFinalText;
+    let interimText = "";
+
+    const results = event?.results;
+    if (results && typeof results.length === "number") {
+      for (let i = event.resultIndex || 0; i < results.length; i++) {
+        const res = results[i];
+        const alt = res && res[0];
+        const transcript = alt && typeof alt.transcript === "string" ? alt.transcript : "";
+        if (!transcript) {
+          continue;
+        }
+        if (res.isFinal) {
+          finalText = `${finalText} ${transcript}`.trim();
+        } else {
+          interimText = `${interimText} ${transcript}`.trim();
+        }
+      }
+    }
+
+    browserSpeechFinalText = finalText;
+    browserSpeechInterimText = interimText;
+    setRealtimeStatus(t("voice_listening"));
+  };
+
+  recognizer.onerror = (event) => {
+    const msg = (event && event.error) || "speech_error";
+    setRealtimeStatus(tf("voice_error_prefix", { msg }));
+    appendRealtimeLogLine("browser_stt_error", String(msg));
+    stopBrowserSpeechRecognition();
+  };
+
+  recognizer.onend = () => {
+    // Always transition to not-running first so UI updates correctly.
+    browserSpeechRunning = false;
+    updateQuickTalkButton();
+
+    const text = String(browserSpeechFinalText || browserSpeechInterimText || "").trim();
+    browserSpeechFinalText = "";
+    browserSpeechInterimText = "";
+
+    if (text) {
+      queueRealtimeSpeechIngest(text, "browser_speech");
+    } else {
+      setRealtimeStatus(t("voice_idle"));
+    }
+  };
+
+  setRealtimeStatus(t("voice_ready"));
+  updateQuickTalkButton();
+  recognizer.start();
+}
+
+function stopBrowserSpeechRecognition() {
+  const recognizer = browserSpeechRecognizer;
+  browserSpeechRecognizer = null;
+  browserSpeechRunning = false;
+  try {
+    recognizer?.stop?.();
+  } catch {}
+  updateQuickTalkButton();
 }
 
 function formatRealtimeError(err) {
@@ -2021,8 +2129,19 @@ function handleRealtimeEvent(evt) {
   }
 
   if (type === "conversation.item.input_audio_transcription.failed") {
-    const errMsg = formatRealtimeError(evt?.error);
+    const errObj = evt?.error;
+    const errCode = errObj && typeof errObj.code === "string" ? errObj.code.trim() : "";
+    const errMsg = formatRealtimeError(errObj);
     appendRealtimeLogLine("stt_failed", errMsg);
+    if (errCode === "insufficient_quota" || /insufficient[_ ]quota/i.test(errMsg) || /exceeded your current quota/i.test(errMsg)) {
+      realtimeQuotaBlocked = true;
+      setRealtimeStatus(t("voice_quota_exceeded"));
+      appendRealtimeLogLine("system", t("voice_quota_exceeded"));
+      stopRealtimeVoice();
+      updateQuickTalkButton();
+      return;
+    }
+
     setRealtimeStatus(tf("voice_error_prefix", { msg: errMsg }));
     maybeApplyRealtimeTranscriptionFallback();
     return;
@@ -2519,11 +2638,33 @@ function bindEvents() {
           if (pendingText) {
             queueRealtimeSpeechIngest(pendingText);
           }
+        } else if (browserSpeechRunning) {
+          stopBrowserSpeechRecognition();
+        } else if (realtimeQuotaBlocked) {
+          if (!isBrowserSpeechSupported()) {
+            throw new Error("Speech recognition is not supported in this browser.");
+          }
+          startBrowserSpeechRecognition();
         } else {
-          await startRealtimeVoice();
+          try {
+            await startRealtimeVoice();
+          } catch (err) {
+            const msg = err?.message || String(err);
+            if (/insufficient[_ ]quota/i.test(msg) || /exceeded your current quota/i.test(msg)) {
+              realtimeQuotaBlocked = true;
+              setRealtimeStatus(t("voice_quota_exceeded"));
+              if (isBrowserSpeechSupported()) {
+                startBrowserSpeechRecognition();
+                return;
+              }
+            }
+            throw err;
+          }
         }
       } catch (err) {
-        setGlobalError(err.message);
+        const msg = err?.message || String(err);
+        setGlobalError(msg);
+        setRealtimeStatus(tf("voice_error_prefix", { msg }));
       } finally {
         updateQuickTalkButton();
         if (btn) {
