@@ -130,6 +130,28 @@ function tokenizeClause(clause) {
   return tokens;
 }
 
+function stripAmbiguousTrailingParticleIfKnownAlias(token, aliasLookup) {
+  if (!aliasLookup || !token) {
+    return token;
+  }
+
+  const ambiguous = ["도", "만", "고"];
+  for (const suffix of ambiguous) {
+    if (!token.endsWith(suffix) || token.length <= suffix.length) {
+      continue;
+    }
+    const base = token.slice(0, -suffix.length);
+    if (!base) {
+      continue;
+    }
+    if (aliasLookup.has(base)) {
+      return base;
+    }
+  }
+
+  return token;
+}
+
 function extractMentionsFromTokens(tokens, aliasLookup) {
   const matches = [];
   const count = tokens.length;
@@ -295,7 +317,7 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
 
       const isRemove = containsRemoveIntent(normalizedClause);
       const qtyInfo = parseQuantityFromClause(normalizedClause);
-      const tokens = tokenizeClause(normalizedClause);
+      const tokens = tokenizeClause(normalizedClause).map((t) => stripAmbiguousTrailingParticleIfKnownAlias(t, aliasLookup));
 
       const { selected, used } = extractMentionsFromTokens(tokens, aliasLookup);
       for (const m of selected) {

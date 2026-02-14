@@ -23,43 +23,77 @@ export function normalizeIngredientKey(value) {
   return normalized;
 }
 
+function getHangulJongseongIndex(ch) {
+  if (!ch) {
+    return null;
+  }
+  const code = ch.codePointAt(0);
+  if (!Number.isFinite(code) || code < 0xac00 || code > 0xd7a3) {
+    return null;
+  }
+  return (code - 0xac00) % 28;
+}
+
+function matchesBatchimRule(base, expectsBatchim) {
+  if (!base) {
+    return false;
+  }
+  const lastChar = base[base.length - 1];
+  const jong = getHangulJongseongIndex(lastChar);
+  if (jong === null) {
+    // Non-Hangul tokens like "tofu는" can still use particles; allow stripping.
+    return true;
+  }
+  return expectsBatchim ? jong !== 0 : jong === 0;
+}
+
 export function removeKoreanParticleSuffix(value) {
   let trimmed = String(value || "");
   if (!trimmed) {
     return trimmed;
   }
 
-  const suffixes = [
-    "이에요",
-    "예요",
-    "이야",
-    "야",
-    "은",
-    "는",
-    "이",
-    "가",
-    "을",
-    "를",
-    "와",
-    "과",
-    "도",
-    "고",
-    "만",
-    "까지",
-    "에서",
-    "부터"
+  // Be conservative: many single-syllable particles (e.g. "도", "고") can be part of real nouns
+  // like "포도", "망고", "아보카도". Those are handled elsewhere with lexicon-aware logic.
+  const rules = [
+    { suffix: "이에요", type: "batchim", expectsBatchim: true },
+    { suffix: "예요", type: "batchim", expectsBatchim: false },
+    { suffix: "이야", type: "batchim", expectsBatchim: true },
+    { suffix: "야", type: "batchim", expectsBatchim: false },
+
+    { suffix: "은", type: "batchim", expectsBatchim: true },
+    { suffix: "는", type: "batchim", expectsBatchim: false },
+    { suffix: "이", type: "batchim", expectsBatchim: true },
+    { suffix: "가", type: "batchim", expectsBatchim: false },
+    { suffix: "을", type: "batchim", expectsBatchim: true },
+    { suffix: "를", type: "batchim", expectsBatchim: false },
+    { suffix: "과", type: "batchim", expectsBatchim: true },
+    { suffix: "와", type: "batchim", expectsBatchim: false },
+
+    { suffix: "이고", type: "simple" },
+    { suffix: "하고", type: "simple" },
+    { suffix: "까지", type: "simple" },
+    { suffix: "에서", type: "simple" },
+    { suffix: "부터", type: "simple" }
   ];
 
   // Strip up to a few stacked endings, e.g. "마늘짱아치이고" -> "마늘짱아치".
   for (let iter = 0; iter < 3; iter += 1) {
     let changed = false;
-    for (const suffix of suffixes) {
-      // Allow stripping from short tokens like "옆은" -> "옆".
-      if (trimmed.endsWith(suffix) && trimmed.length > suffix.length) {
-        trimmed = trimmed.slice(0, -suffix.length);
+    for (const rule of rules) {
+      const suffix = rule.suffix;
+      if (!trimmed.endsWith(suffix) || trimmed.length <= suffix.length) {
+        continue;
+      }
+
+      const base = trimmed.slice(0, -suffix.length);
+      if (rule.type === "batchim" && !matchesBatchimRule(base, rule.expectsBatchim)) {
+        continue;
+      }
+
+      trimmed = base;
         changed = true;
         break;
-      }
     }
     if (!changed) {
       break;
@@ -129,6 +163,8 @@ export function getDefaultStopwordMap() {
     "냉장실",
     "냉동실",
     "맨",
+    "첨",
+    "맨첨",
     "처음",
     "맨처음"
   ];

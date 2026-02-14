@@ -128,6 +128,21 @@ function Run-Tests {
   Assert-True -Condition (@($sideWordsPhrases | Where-Object { $_ -eq (([char]0xCC98).ToString()+([char]0xC74C)) }).Count -eq 0) -Message "Positional word '처음' should not become a pending phrase"
   Assert-True -Condition (@($sideWordsPhrases | Where-Object { $_ -eq (([char]0xB9E8).ToString()) -or $_ -eq (([char]0xB9E8).ToString()+([char]0xCC98)+([char]0xC74C)) }).Count -eq 0) -Message "Positional word '맨/맨처음' should not become a pending phrase"
 
+  # Regression: do not strip real nouns where the ending syllable matches a particle (e.g. 오이/사과/포도/망고/아보카도).
+  $testPrefix = ([char]0xD14C).ToString()+([char]0xC2A4)+([char]0xD2B8) # "테스트"
+  $particleNounsText = ($testPrefix+([char]0xC624)+([char]0xC774))+' '+($testPrefix+([char]0xC0AC)+([char]0xACFC))+' '+($testPrefix+([char]0xBB34)+([char]0xD654)+([char]0xACFC))+' '+($testPrefix+([char]0xD3EC)+([char]0xB3C4))+' '+($testPrefix+([char]0xB9DD)+([char]0xACE0))+' '+($testPrefix+([char]0xC544)+([char]0xBCF4)+([char]0xCE74)+([char]0xB3C4))
+  $particleParsed = Parse-ConversationCommands -Text $particleNounsText
+  $particlePhrases = @($particleParsed.review_candidates | ForEach-Object { $_.phrase })
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xC624)+([char]0xC774)) }).Count -ge 1) -Message "Particle-like noun ending with '이' should remain intact"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xC0AC)+([char]0xACFC)) }).Count -ge 1) -Message "Particle-like noun ending with '과' should remain intact"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xD3EC)+([char]0xB3C4)) }).Count -ge 1) -Message "Particle-like noun ending with '도' should remain intact"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xB9DD)+([char]0xACE0)) }).Count -ge 1) -Message "Particle-like noun ending with '고' should remain intact"
+
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xC624)) }).Count -eq 0) -Message "Should not truncate '...오이' into '...오'"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xC0AC)) }).Count -eq 0) -Message "Should not truncate '...사과' into '...사'"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xD3EC)) }).Count -eq 0) -Message "Should not truncate '...포도' into '...포'"
+  Assert-True -Condition (@($particlePhrases | Where-Object { $_ -eq ($testPrefix+([char]0xB9DD)) }).Count -eq 0) -Message "Should not truncate '...망고' into '...망'"
+
   $summary = Get-DraftSummary -DraftItems $visionDraft
   Assert-True -Condition ($summary.item_count -ge 3) -Message "Draft summary should have item count"
 

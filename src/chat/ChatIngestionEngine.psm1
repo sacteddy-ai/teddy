@@ -47,6 +47,50 @@ function Convert-UnicodeEscapeLiterals {
   )
 }
 
+function Get-HangulJongseongIndex {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Char
+  )
+
+  if ([string]::IsNullOrEmpty($Char)) {
+    return $null
+  }
+
+  $code = [int][char]$Char
+  if ($code -lt 0xAC00 -or $code -gt 0xD7A3) {
+    return $null
+  }
+
+  return (($code - 0xAC00) % 28)
+}
+
+function Test-BatchimRule {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Base,
+    [Parameter(Mandatory = $true)]
+    [bool]$RequiresBatchim
+  )
+
+  if ([string]::IsNullOrEmpty($Base)) {
+    return $false
+  }
+
+  $lastChar = $Base.Substring($Base.Length - 1, 1)
+  $jong = Get-HangulJongseongIndex -Char $lastChar
+  if ($null -eq $jong) {
+    # Non-Hangul tokens like "tofu-neun" can still carry particles; allow stripping.
+    return $true
+  }
+
+  if ($RequiresBatchim) {
+    return ($jong -ne 0)
+  }
+
+  return ($jong -eq 0)
+}
+
 function Normalize-IngredientKey {
   param(
     [Parameter(Mandatory = $true)]
@@ -71,25 +115,28 @@ function Remove-KoreanParticleSuffix {
     return $Value
   }
 
-  $suffixes = @(
-    "\uC774\uC5D0\uC694", # ieyo
-    "\uC608\uC694", # yeyo
-    "\uC774\uC57C", # iya
-    "\uC57C", # ya
-    "\uC740", # eun
-    "\uB294", # neun
-    "\uC774", # i
-    "\uAC00", # ga
-    "\uC744", # eul
-    "\uB97C", # reul
-    "\uC640", # wa
-    "\uACFC", # gwa
-    "\uB3C4", # do
-    "\uACE0", # go
-    "\uB9CC", # man
-    "\uAE4C\uC9C0", # kkaji
-    "\uC5D0\uC11C", # eseo
-    "\uBD80\uD130" # buteo
+  # Be conservative: single-syllable particles like "do", "go", "man" can be part of real nouns.
+  # Keep them intact here to avoid truncating ingredient names.
+  $rules = @(
+    @{ suffix = "\uC774\uC5D0\uC694"; kind = "batchim"; requires_batchim = $true },  # ieyo
+    @{ suffix = "\uC608\uC694"; kind = "batchim"; requires_batchim = $false },     # yeyo
+    @{ suffix = "\uC774\uC57C"; kind = "batchim"; requires_batchim = $true },      # iya
+    @{ suffix = "\uC57C"; kind = "batchim"; requires_batchim = $false },           # ya
+
+    @{ suffix = "\uC740"; kind = "batchim"; requires_batchim = $true },            # eun
+    @{ suffix = "\uB294"; kind = "batchim"; requires_batchim = $false },           # neun
+    @{ suffix = "\uC774"; kind = "batchim"; requires_batchim = $true },            # i
+    @{ suffix = "\uAC00"; kind = "batchim"; requires_batchim = $false },           # ga
+    @{ suffix = "\uC744"; kind = "batchim"; requires_batchim = $true },            # eul
+    @{ suffix = "\uB97C"; kind = "batchim"; requires_batchim = $false },           # reul
+    @{ suffix = "\uACFC"; kind = "batchim"; requires_batchim = $true },            # gwa
+    @{ suffix = "\uC640"; kind = "batchim"; requires_batchim = $false },           # wa
+
+    @{ suffix = "\uC774\uACE0"; kind = "simple"; requires_batchim = $false },      # igo
+    @{ suffix = "\uD558\uACE0"; kind = "simple"; requires_batchim = $false },      # hago
+    @{ suffix = "\uAE4C\uC9C0"; kind = "simple"; requires_batchim = $false },      # kkaji
+    @{ suffix = "\uC5D0\uC11C"; kind = "simple"; requires_batchim = $false },      # eseo
+    @{ suffix = "\uBD80\uD130"; kind = "simple"; requires_batchim = $false }       # buteo
   )
 
   $trimmed = $Value
@@ -97,11 +144,19 @@ function Remove-KoreanParticleSuffix {
   # Strip stacked endings like "\uC774\uACE0" (igo) => "... \uC774" then again => base token.
   for ($iter = 0; $iter -lt 3; $iter++) {
     $changed = $false
-    foreach ($rawSuffix in $suffixes) {
-      $suffix = Convert-UnicodeEscapeLiterals -Value $rawSuffix
-      # Allow stripping from short tokens like "옆은" -> "옆".
+    foreach ($rule in $rules) {
+      $suffix = Convert-UnicodeEscapeLiterals -Value $rule.suffix
+      # Allow stripping from short tokens, e.g. "yeop-eun" -> "yeop".
       if ($trimmed.EndsWith($suffix, [System.StringComparison]::Ordinal) -and $trimmed.Length -gt $suffix.Length) {
-        $trimmed = $trimmed.Substring(0, $trimmed.Length - $suffix.Length)
+        $base = $trimmed.Substring(0, $trimmed.Length - $suffix.Length)
+        if ($rule.kind -eq "batchim") {
+          $requiresBatchim = [bool]$rule.requires_batchim
+          if (-not (Test-BatchimRule -Base $base -RequiresBatchim $requiresBatchim)) {
+            continue
+          }
+        }
+
+        $trimmed = $base
         $changed = $true
         break
       }
@@ -129,7 +184,7 @@ function Get-DefaultStopwordMap {
     "\uC704\uCABD", "\uC544\uB798\uCABD", "\uC55E\uCABD", "\uB4A4\uCABD",
     "\uC717\uCE78", "\uC544\uB7AB\uCE78", "\uCE78", "\uC120\uBC18", "\uC11C\uB78D",
     "\uB0C9\uC7A5\uC2E4", "\uB0C9\uB3D9\uC2E4",
-    "\uB9E8", "\uCC98\uC74C", "\uB9E8\uCC98\uC74C"
+    "\uB9E8", "\uCCA8", "\uB9E8\uCCA8", "\uCC98\uC74C", "\uB9E8\uCC98\uC74C"
   )
 
   $map = @{}
@@ -158,27 +213,27 @@ function Test-IsSpatialOrOrdinalToken {
     return $false
   }
 
-  $ordinalMarker = Convert-UnicodeEscapeLiterals -Value "\uBC88\uC9F8" # "번째"
+  $ordinalMarker = Convert-UnicodeEscapeLiterals -Value "\uBC88\uC9F8" # beonjjae
   if (-not [string]::IsNullOrWhiteSpace($ordinalMarker) -and $t.Contains($ordinalMarker)) {
     return $true
   }
 
-  $ordinalSuffix = Convert-UnicodeEscapeLiterals -Value "\uC9F8" # "째"
+  $ordinalSuffix = Convert-UnicodeEscapeLiterals -Value "\uC9F8" # jjae
   if (-not [string]::IsNullOrWhiteSpace($ordinalSuffix) -and $t.EndsWith($ordinalSuffix, [System.StringComparison]::Ordinal)) {
     return $true
   }
 
-  $locativeTail = Convert-UnicodeEscapeLiterals -Value "\uC5D0\uC11C" # "에서"
+  $locativeTail = Convert-UnicodeEscapeLiterals -Value "\uC5D0\uC11C" # eseo
   if (-not [string]::IsNullOrWhiteSpace($locativeTail) -and $t.EndsWith($locativeTail, [System.StringComparison]::Ordinal)) {
     return $true
   }
 
-  $fromTail = Convert-UnicodeEscapeLiterals -Value "\uBD80\uD130" # "부터"
+  $fromTail = Convert-UnicodeEscapeLiterals -Value "\uBD80\uD130" # buteo
   if (-not [string]::IsNullOrWhiteSpace($fromTail) -and $t.EndsWith($fromTail, [System.StringComparison]::Ordinal)) {
     return $true
   }
 
-  $slotSuffix = Convert-UnicodeEscapeLiterals -Value "\uCE78" # "칸"
+  $slotSuffix = Convert-UnicodeEscapeLiterals -Value "\uCE78" # kan
   if (-not [string]::IsNullOrWhiteSpace($slotSuffix) -and $t.EndsWith($slotSuffix, [System.StringComparison]::Ordinal) -and $t.Length -le 5) {
     return $true
   }
