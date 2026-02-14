@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
   --bg-0: #f7f9ed;
@@ -23,9 +23,46 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Noto Sans KR", "Space Grotesk", sans-serif;
   color: var(--ink);
   background: linear-gradient(160deg, var(--bg-0), var(--bg-1));
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.easy-only {
+  display: none;
+}
+
+body.easy .easy-only {
+  display: block;
+}
+
+body.easy .advanced-only {
+  display: none !important;
+}
+
+body.easy .seg-btn {
+  padding: 14px 12px;
+  font-size: 1.02rem;
+}
+
+body.easy .item {
+  padding: 12px;
+  border-radius: 16px;
+}
+
+body.easy .item .name {
+  font-size: 1.06rem;
 }
 
 .background-blobs {
@@ -127,6 +164,63 @@ h1 {
 
 .controls input {
   width: 180px;
+}
+
+.mode-toggle {
+  margin: 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.seg-btn {
+  flex: 1;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+}
+
+.seg-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+.seg-btn.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.quick-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.inventory-tabs {
+  margin: 10px 0 12px;
+}
+
+.file-picker {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+.file-name {
+  font-size: 0.82rem;
 }
 
 .grid {
@@ -340,6 +434,14 @@ textarea {
   margin-top: 8px;
 }
 
+.review-actions.easy {
+  flex-direction: column;
+}
+
+.review-actions.easy .btn {
+  width: 100%;
+}
+
 .review-custom {
   display: grid;
   grid-template-columns: 1fr 1fr auto auto;
@@ -352,6 +454,10 @@ textarea {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: none;
   border-radius: 10px;
   padding: 9px 12px;
@@ -380,6 +486,16 @@ textarea {
 .btn.tiny {
   padding: 5px 8px;
   font-size: 0.78rem;
+}
+
+.btn.big {
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 1.02rem;
+}
+
+.btn.full {
+  width: 100%;
 }
 
 .btn.warn {

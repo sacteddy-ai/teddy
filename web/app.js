@@ -16,12 +16,17 @@ let realtimeIngestChain = Promise.resolve();
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
 const CAPTURE_STORAGE_TYPE_KEY = "teddy_capture_storage_type";
+const EASY_MODE_STORAGE_KEY = "teddy_easy_mode";
+const INVENTORY_FILTER_STORAGE_KEY = "teddy_inventory_filter_storage";
 
 let currentLang = "en";
 let ingredientLabelsUserId = "";
 let ingredientLabelsByKey = new Map();
 let ingredientLabelsLoadPromise = null;
 let ingredientLabelsLoadUserId = "";
+
+let inventoryItemsCache = [];
+let inventoryFilterStorage = "refrigerated";
 
 const I18N = {
   en: {
@@ -31,6 +36,7 @@ const I18N = {
     hero_subtitle: "Track ingredients, expiration risk, recipe options, and shopping actions in one place.",
     label_user_id: "User ID",
     label_language: "Language",
+    easy_mode_label: "Easy Mode",
     btn_refresh_all: "Refresh All",
     btn_reload_catalog: "Reload Catalog",
     remote_api_summary: "Remote API (optional)",
@@ -63,6 +69,10 @@ const I18N = {
     notification_runner_desc: "Send all due notifications up to now.",
     btn_run_due_notifications: "Run Due Notifications",
     conversational_capture_title: "Conversational Capture",
+    btn_take_photo: "Take Photo",
+    btn_quick_talk: "Talk",
+    btn_stop_talk: "Stop Talking",
+    quick_capture_hint: "Choose storage, then take a photo or talk. We'll add items automatically.",
     label_session_id: "Session ID",
     ph_start_session: "Start a session",
     btn_start_session: "Start Session",
@@ -151,6 +161,7 @@ const I18N = {
     hero_subtitle: "식재료, 유통기한, 레시피, 장보기까지 한 화면에서 관리하세요.",
     label_user_id: "User ID",
     label_language: "언어",
+    easy_mode_label: "쉬운 모드",
     btn_refresh_all: "전체 새로고침",
     btn_reload_catalog: "카탈로그 새로고침",
     remote_api_summary: "원격 API (선택)",
@@ -183,6 +194,10 @@ const I18N = {
     notification_runner_desc: "지금까지 도착해야 할 알림을 모두 발송합니다.",
     btn_run_due_notifications: "알림 실행",
     conversational_capture_title: "대화형 캡처",
+    btn_take_photo: "사진 찍기",
+    btn_quick_talk: "말하기",
+    btn_stop_talk: "말하기 중지",
+    quick_capture_hint: "보관 방식을 고르고, 사진을 찍거나 말해보세요. 자동으로 추가해요.",
     label_session_id: "세션 ID",
     ph_start_session: "세션 시작",
     btn_start_session: "세션 시작",
@@ -313,6 +328,44 @@ function detectDefaultLang() {
   return nav || "en";
 }
 
+function detectDefaultEasyMode() {
+  const usp = new URLSearchParams(location.search);
+  const raw = String(usp.get("easy") || usp.get("simple") || "").trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off") {
+    return false;
+  }
+  if (raw === "1" || raw === "true" || raw === "on") {
+    return true;
+  }
+
+  const stored = String(localStorage.getItem(EASY_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+  if (stored === "0" || stored === "false" || stored === "off") {
+    return false;
+  }
+  if (stored === "1" || stored === "true" || stored === "on") {
+    return true;
+  }
+
+  return true;
+}
+
+function isEasyMode() {
+  return document.body.classList.contains("easy");
+}
+
+function setEasyMode(enabled) {
+  const next = Boolean(enabled);
+  document.body.classList.toggle("easy", next);
+  localStorage.setItem(EASY_MODE_STORAGE_KEY, next ? "true" : "false");
+  const el = $("easyModeToggle");
+  if (el) {
+    el.checked = next;
+  }
+  syncCaptureStorageButtonsUI();
+  syncInventoryTabsUI();
+  updateQuickTalkButton();
+}
+
 function t(key) {
   const lang = currentLang || "en";
   return I18N[lang]?.[key] ?? I18N.en[key] ?? String(key);
@@ -335,6 +388,9 @@ function setLang(lang) {
     el.value = normalized;
   }
   applyI18n();
+  syncCaptureStorageButtonsUI();
+  syncInventoryTabsUI();
+  updateQuickTalkButton();
 }
 
 function applyI18n() {
@@ -559,6 +615,16 @@ function setRealtimeStatus(message) {
   el.textContent = message || "";
 }
 
+function updateQuickTalkButton() {
+  const btn = $("quickTalkBtn");
+  if (!btn) {
+    return;
+  }
+  const running = isRealtimeConnected();
+  btn.textContent = running ? t("btn_stop_talk") : t("btn_quick_talk");
+  btn.setAttribute("aria-pressed", running ? "true" : "false");
+}
+
 function appendRealtimeLogLine(prefix, message) {
   const host = $("realtimeLog");
   if (!host) {
@@ -691,6 +757,30 @@ function setCaptureStorageType(value) {
   el.value = normalizeStorageType(value);
 }
 
+function applyCaptureStorageType(value, options = {}) {
+  const storageType = normalizeStorageType(value);
+  setCaptureStorageType(storageType);
+  if (options?.persist !== false) {
+    localStorage.setItem(CAPTURE_STORAGE_TYPE_KEY, storageType);
+  }
+  if (options?.syncInventory !== false) {
+    setInventoryFilterStorage(storageType, { persist: true });
+  }
+  syncCaptureStorageButtonsUI();
+}
+
+function syncCaptureStorageButtonsUI() {
+  const host = $("captureStorageButtons");
+  if (!host) {
+    return;
+  }
+  const active = getCaptureStorageType();
+  host.querySelectorAll(".seg-btn").forEach((btn) => {
+    const st = normalizeStorageType(btn?.dataset?.storage || "");
+    btn.classList.toggle("active", st === active);
+  });
+}
+
 function parseCsvItems(value) {
   if (!value) {
     return [];
@@ -758,10 +848,84 @@ function buildReviewQueueNode(item) {
   const main = document.createElement("div");
   main.className = "item-main";
 
+  const rawPhrase = item?.phrase ? String(item.phrase).trim() : "";
+  const phrase = rawPhrase || t("unknown_phrase");
+  const candidateOptions = Array.isArray(item.candidate_options) ? item.candidate_options : [];
+
   const name = document.createElement("strong");
   name.className = "name";
-  name.textContent = item.phrase || t("unknown_phrase");
+  name.textContent = phrase;
   main.appendChild(name);
+
+  if (isEasyMode()) {
+    const actions = document.createElement("div");
+    actions.className = "review-actions easy";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn big full";
+    saveBtn.textContent = t("btn_save");
+    saveBtn.addEventListener("click", async () => {
+      if (!rawPhrase) {
+        setGlobalError(t("unknown_phrase"));
+        return;
+      }
+
+      saveBtn.disabled = true;
+      try {
+        const best = candidateOptions.length > 0 ? candidateOptions[0] : null;
+        const ingredientKey = best?.ingredient_key
+          ? String(best.ingredient_key).trim()
+          : normalizeIngredientKeyLoose(rawPhrase);
+        const displayName = best?.ingredient_key
+          ? ingredientLabel(best.ingredient_key, best.ingredient_name)
+          : rawPhrase;
+
+        await resolveReviewQueueItem(item.id, {
+          action: "map",
+          ingredient_key: ingredientKey,
+          display_name: displayName || null
+        });
+        setCaptureError("");
+        await refreshAll();
+      } catch (err) {
+        setGlobalError(err.message);
+        setCaptureError(err.message);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    const ignoreBtn = document.createElement("button");
+    ignoreBtn.type = "button";
+    ignoreBtn.className = "btn big warn full";
+    ignoreBtn.textContent = t("btn_ignore");
+    ignoreBtn.addEventListener("click", async () => {
+      ignoreBtn.disabled = true;
+      try {
+        await resolveReviewQueueItem(item.id, { action: "ignore", apply_to_session: false });
+        setCaptureError("");
+        await refreshAll();
+      } catch (err) {
+        setGlobalError(err.message);
+        setCaptureError(err.message);
+      } finally {
+        ignoreBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(ignoreBtn);
+    main.appendChild(actions);
+
+    const side = document.createElement("div");
+    side.className = "item-side";
+    side.appendChild(statusBadge("expiring_soon"));
+
+    node.appendChild(main);
+    node.appendChild(side);
+    return node;
+  }
 
   const meta = document.createElement("span");
   meta.className = "meta";
@@ -771,7 +935,6 @@ function buildReviewQueueNode(item) {
   });
   main.appendChild(meta);
 
-  const candidateOptions = Array.isArray(item.candidate_options) ? item.candidate_options : [];
   if (candidateOptions.length > 0) {
     const actions = document.createElement("div");
     actions.className = "review-actions";
@@ -933,12 +1096,15 @@ function renderCaptureDraft(capture) {
   } else {
     items.forEach((item) => {
       const displayName = ingredientLabel(item.ingredient_key, item.ingredient_name);
+      const metaLine = isEasyMode()
+        ? `${item.quantity} ${item.unit}`
+        : `${item.quantity} ${item.unit} | key ${item.ingredient_key}`;
       const node = document.createElement("div");
       node.className = "item";
       node.innerHTML = `
         <div class="item-main">
           <strong class="name">${displayName}</strong>
-          <span class="meta">${item.quantity} ${item.unit} | key ${item.ingredient_key}</span>
+          <span class="meta">${metaLine}</span>
         </div>
         <div class="item-side">
           <span class="badge fresh">${t("badge_draft")}</span>
@@ -1438,6 +1604,7 @@ function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
 async function startRealtimeVoice() {
   if (isRealtimeConnected()) {
     setRealtimeStatus("Voice session already running.");
+    updateQuickTalkButton();
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -1538,6 +1705,7 @@ async function startRealtimeVoice() {
 
     await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     setRealtimeStatus("Voice session connected.");
+    updateQuickTalkButton();
   } catch (err) {
     stopRealtimeVoice();
     const msg = err?.message || String(err);
@@ -1583,6 +1751,7 @@ function stopRealtimeVoice() {
   realtimeLastSharedImageAt = 0;
   realtimeIngestChain = Promise.resolve();
   setRealtimeStatus("Voice session stopped.");
+  updateQuickTalkButton();
 }
 
 async function sendRealtimeTextToAgent(text, autoRespond = true) {
@@ -1722,6 +1891,57 @@ async function consumeItem(itemId) {
   });
 }
 
+function detectDefaultInventoryFilterStorage() {
+  const stored = String(localStorage.getItem(INVENTORY_FILTER_STORAGE_KEY) || "").trim();
+  if (stored) {
+    return normalizeStorageType(stored);
+  }
+  const captureStored = String(localStorage.getItem(CAPTURE_STORAGE_TYPE_KEY) || "").trim();
+  if (captureStored) {
+    return normalizeStorageType(captureStored);
+  }
+  return "refrigerated";
+}
+
+function setInventoryFilterStorage(value, options = {}) {
+  const next = normalizeStorageType(value);
+  inventoryFilterStorage = next;
+  if (options?.persist !== false) {
+    localStorage.setItem(INVENTORY_FILTER_STORAGE_KEY, next);
+  }
+  syncInventoryTabsUI();
+  renderInventoryFromCache();
+}
+
+function syncInventoryTabsUI() {
+  const host = $("inventoryTabs");
+  if (!host) {
+    return;
+  }
+  host.querySelectorAll(".seg-btn").forEach((btn) => {
+    const st = normalizeStorageType(btn?.dataset?.storage || "");
+    btn.classList.toggle("active", st === inventoryFilterStorage);
+  });
+}
+
+function renderInventoryFromCache() {
+  const list = $("inventoryList");
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+
+  const items = Array.isArray(inventoryItemsCache) ? inventoryItemsCache : [];
+  const filtered = items.filter((item) => normalizeStorageType(item?.storage_type || "") === inventoryFilterStorage);
+
+  if (filtered.length === 0) {
+    list.appendChild(emptyNode(t("empty_inventory")));
+    return;
+  }
+
+  filtered.forEach((item) => list.appendChild(buildInventoryNode(item)));
+}
+
 function buildInventoryNode(item) {
   const tpl = $("inventoryItemTemplate");
   const node = tpl.content.firstElementChild.cloneNode(true);
@@ -1759,16 +1979,8 @@ async function loadInventory() {
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId });
   const result = await request(`/api/v1/inventory/items?${q}`, { method: "GET" });
-  const list = $("inventoryList");
-  list.innerHTML = "";
-  const items = result.data.items || [];
-
-  if (items.length === 0) {
-    list.appendChild(emptyNode(t("empty_inventory")));
-    return;
-  }
-
-  items.forEach((item) => list.appendChild(buildInventoryNode(item)));
+  inventoryItemsCache = result.data.items || [];
+  renderInventoryFromCache();
 }
 
 function renderRecipeList(items) {
@@ -1983,9 +2195,79 @@ function bindEvents() {
       }
     });
   }
+  if ($("easyModeToggle")) {
+    $("easyModeToggle").addEventListener("change", () => {
+      setEasyMode(Boolean($("easyModeToggle").checked));
+    });
+  }
+  if ($("captureStorageButtons")) {
+    $("captureStorageButtons").addEventListener("click", (event) => {
+      const btn = event?.target?.closest?.(".seg-btn");
+      if (!btn) {
+        return;
+      }
+      applyCaptureStorageType(btn.dataset.storage);
+    });
+  }
   if ($("captureStorageType")) {
     $("captureStorageType").addEventListener("change", () => {
-      localStorage.setItem(CAPTURE_STORAGE_TYPE_KEY, getCaptureStorageType());
+      applyCaptureStorageType(getCaptureStorageType());
+    });
+  }
+  if ($("inventoryTabs")) {
+    $("inventoryTabs").addEventListener("click", (event) => {
+      const btn = event?.target?.closest?.(".seg-btn");
+      if (!btn) {
+        return;
+      }
+      setInventoryFilterStorage(btn.dataset.storage, { persist: true });
+    });
+  }
+  if ($("captureVisionImageInput")) {
+    $("captureVisionImageInput").addEventListener("change", async () => {
+      const input = $("captureVisionImageInput");
+      const file = input?.files?.[0] || null;
+      const nameEl = $("captureVisionFileName");
+      if (nameEl) {
+        nameEl.textContent = file ? file.name : "";
+      }
+      if (!file) {
+        return;
+      }
+      try {
+        await analyzeVisionImage();
+      } catch (err) {
+        setCaptureError(err.message);
+        setGlobalError(err.message);
+      } finally {
+        // Allow selecting the same file again.
+        try {
+          input.value = "";
+        } catch {}
+      }
+    });
+  }
+  if ($("quickTalkBtn")) {
+    $("quickTalkBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      const btn = $("quickTalkBtn");
+      if (btn) {
+        btn.disabled = true;
+      }
+      try {
+        if (isRealtimeConnected()) {
+          stopRealtimeVoice();
+        } else {
+          await startRealtimeVoice();
+        }
+      } catch (err) {
+        setGlobalError(err.message);
+      } finally {
+        updateQuickTalkButton();
+        if (btn) {
+          btn.disabled = false;
+        }
+      }
     });
   }
   $("saveApiBaseBtn").addEventListener("click", async (event) => {
@@ -2156,14 +2438,15 @@ function bindEvents() {
 function init() {
   initApiBaseFromQuery();
   setLang(detectDefaultLang());
+  setEasyMode(detectDefaultEasyMode());
   const apiBaseInput = $("apiBaseUrl");
   if (apiBaseInput) {
     apiBaseInput.value = getApiBase();
   }
-  const storedCaptureStorage = localStorage.getItem(CAPTURE_STORAGE_TYPE_KEY) || "";
-  if (storedCaptureStorage) {
-    setCaptureStorageType(storedCaptureStorage);
-  }
+  const storedCaptureStorage = String(localStorage.getItem(CAPTURE_STORAGE_TYPE_KEY) || "").trim();
+  const captureStorage = storedCaptureStorage ? normalizeStorageType(storedCaptureStorage) : "refrigerated";
+  applyCaptureStorageType(captureStorage, { persist: false, syncInventory: false });
+  setInventoryFilterStorage(detectDefaultInventoryFilterStorage(), { persist: false });
 
   const purchased = document.querySelector("[name='purchased_at']");
   if (purchased) {

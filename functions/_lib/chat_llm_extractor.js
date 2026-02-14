@@ -3,6 +3,7 @@ import {
   clampNumber,
   nowIso,
   normalizeReviewPhraseValue,
+  normalizeIngredientKey,
   normalizeWhitespace,
   normalizeWord,
   safeString
@@ -264,7 +265,6 @@ export async function augmentParseResultWithChatLlmExtraction(context, userId, t
   const commands = Array.isArray(parseResult?.commands) ? Array.from(parseResult.commands) : [];
 
   const existingKeySet = new Set(commands.map((c) => normalizeWord(c?.ingredient_key || "")));
-  const reviewCandidates = [];
 
   for (const item of extracted) {
     const normalizedAliasKey = normalizeWord(item.name);
@@ -290,19 +290,32 @@ export async function augmentParseResultWithChatLlmExtraction(context, userId, t
       continue;
     }
 
-    reviewCandidates.push({
-      phrase: item.name,
-      reason: "llm_extracted",
-      candidates: []
+    const fallbackKeyRaw = normalizeIngredientKey(item.name);
+    const fallbackKey = String(fallbackKeyRaw || "").trim();
+    const key = normalizeWord(fallbackKey);
+    if (!key || existingKeySet.has(key)) {
+      continue;
+    }
+    existingKeySet.add(key);
+    commands.push({
+      action: "add",
+      ingredient_key: fallbackKey,
+      ingredient_name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      remove_all: false,
+      source: "chat_llm",
+      confidence: "low",
+      matched_alias: item.name,
+      match_type: "llm_fallback"
     });
   }
 
   return {
     ...parseResult,
     commands,
-    review_candidates: reviewCandidates,
+    review_candidates: [],
     llm_extraction_used: true,
     llm_extraction_model: extraction?.model ? String(extraction.model) : cfg.model
   };
 }
-
