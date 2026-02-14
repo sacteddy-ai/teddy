@@ -155,6 +155,7 @@ const I18N = {
     voice_error_prefix: "Error: {msg}",
     voice_draft_updated: "Draft updated from speech.",
     voice_draft_update_failed: "Draft update failed: {msg}",
+    voice_saved: "Saved to inventory.",
     meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
     meta_inventory_line: "{qty} {unit} | {storage} | exp {exp} | D{days}",
     meta_recipe_line: "{chef} | score {score} | match {match}%",
@@ -290,6 +291,7 @@ const I18N = {
     voice_error_prefix: "오류: {msg}",
     voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
+    voice_saved: "인벤토리에 저장했어요.",
     meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
     meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
     meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
@@ -729,14 +731,29 @@ async function sendCaptureMessagePayload(payload) {
     throw new Error(t("capture_error_need_text_or_vision"));
   }
 
-  const result = await request(`/api/v1/capture/sessions/${sessionId}/message`, {
-    method: "POST",
-    body: JSON.stringify({
-      source_type: payload?.source_type || "text",
-      text,
-      vision_detected_items: visionItems
-    })
-  });
+  const sendOnce = async () =>
+    request(`/api/v1/capture/sessions/${sessionId}/message`, {
+      method: "POST",
+      body: JSON.stringify({
+        source_type: payload?.source_type || "text",
+        text,
+        vision_detected_items: visionItems
+      })
+    });
+
+  let result = null;
+  try {
+    result = await sendOnce();
+  } catch (err) {
+    const msg = err?.message || String(err);
+    if (/capture session is not open|capture session not found/i.test(msg)) {
+      await startCaptureSession();
+      sessionId = getCaptureSessionId();
+      result = await sendOnce();
+    } else {
+      throw err;
+    }
+  }
 
   renderCaptureDraft(result.data.capture);
   const parsedCommandCount = result?.data?.turn?.parsed_command_count ?? 0;
@@ -1691,6 +1708,11 @@ async function startRealtimeVoice() {
           type: "session.update",
           session: {
             type: "realtime",
+            input_audio_transcription: {
+              model: "whisper-1",
+              language: lang
+            },
+            turn_detection: { type: "server_vad" },
             audio: {
               input: {
                 noise_reduction: { type: "near_field" },
@@ -1827,6 +1849,88 @@ async function sendRealtimeTextToAgent(text, autoRespond = true) {
   }
 }
 
+function extractCaptureMessageReviewQueueCount(result) {
+  return (
+    result?.data?.review_queue_count ??
+    result?.data?.turn?.review_queue_item_count ??
+    result?.data?.capture?.review_queue_count ??
+    0
+  );
+}
+
+async function maybeAutoFinalizeSpeechCapture(messageResult) {
+  if (!isEasyMode()) {
+    return;
+  }
+
+  const draftCount = Number(messageResult?.data?.capture?.session?.draft_items?.length || 0);
+  if (draftCount <= 0) {
+    return;
+  }
+
+  const reviewQueueCount = extractCaptureMessageReviewQueueCount(messageResult);
+  if (reviewQueueCount > 0) {
+    // Keep the session open so confirmations can be applied.
+    return;
+  }
+
+  try {
+    await finalizeCaptureSession();
+    setCaptureError("");
+    setCaptureSessionId("");
+    renderCaptureDraft(null);
+    await Promise.all([loadSummary(), loadInventory(), loadNotifications()]);
+    setRealtimeStatus(t("voice_saved"));
+  } catch (err) {
+    const msg = err?.message || String(err);
+    setGlobalError(msg);
+    setCaptureError(msg);
+    setRealtimeStatus(msg);
+  }
+}
+
+function queueRealtimeSpeechIngest(finalText) {
+  const text = String(finalText || "").trim();
+  if (!text) {
+    return;
+  }
+
+  const now = Date.now();
+  if (text === realtimeLastIngestedText && now - realtimeLastIngestedAt < 4500) {
+    return;
+  }
+  realtimeLastIngestedText = text;
+  realtimeLastIngestedAt = now;
+
+  setRealtimeStatus(tf("voice_heard", { text }));
+  appendRealtimeLogLine("me", text);
+
+  const autoIngest = isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
+  if (!autoIngest) {
+    return;
+  }
+
+  realtimeIngestChain = realtimeIngestChain
+    .then(() =>
+      sendCaptureMessagePayload({
+        source_type: "realtime_voice",
+        text,
+        vision_detected_items: []
+      })
+    )
+    .then((res) => {
+      appendRealtimeLogLine("system", t("voice_draft_updated"));
+      return maybeAutoFinalizeSpeechCapture(res);
+    })
+    .catch((err) => {
+      const msg = err?.message || "unknown error";
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setGlobalError(msg);
+      setCaptureError(msg);
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+    });
+}
+
 function handleRealtimeEvent(evt) {
   const type = String(evt?.type || "").trim();
   if (!type) {
@@ -1862,39 +1966,7 @@ function handleRealtimeEvent(evt) {
     const finalText = String(transcript || realtimeUserTranscriptDelta || "").trim();
     if (finalText) {
       realtimeUserTranscriptDelta = "";
-
-      const now = Date.now();
-      if (finalText === realtimeLastIngestedText && now - realtimeLastIngestedAt < 4500) {
-        return;
-      }
-      realtimeLastIngestedText = finalText;
-      realtimeLastIngestedAt = now;
-
-      setRealtimeStatus(tf("voice_heard", { text: finalText }));
-      appendRealtimeLogLine("me", finalText);
-
-      const autoIngest =
-        isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
-      if (autoIngest) {
-        // Queue capture updates so fast speech doesn't drop messages.
-        realtimeIngestChain = realtimeIngestChain
-          .then(() =>
-            sendCaptureMessagePayload({
-              source_type: "realtime_voice",
-              text: finalText,
-              vision_detected_items: []
-            })
-          )
-          .then(() => {
-            appendRealtimeLogLine("system", t("voice_draft_updated"));
-          })
-          .catch((err) => {
-            appendRealtimeLogLine(
-              "system",
-              tf("voice_draft_update_failed", { msg: err?.message || "unknown error" })
-            );
-          });
-      }
+      queueRealtimeSpeechIngest(finalText);
     }
     return;
   }
@@ -1925,36 +1997,8 @@ function handleRealtimeEvent(evt) {
       .filter((v) => v.length > 0);
     const finalText = transcriptParts.join(" ").trim();
     if (finalText) {
-      const now = Date.now();
-      if (finalText !== realtimeLastIngestedText || now - realtimeLastIngestedAt >= 4500) {
-        realtimeLastIngestedText = finalText;
-        realtimeLastIngestedAt = now;
-
-        setRealtimeStatus(tf("voice_heard", { text: finalText }));
-        appendRealtimeLogLine("me", finalText);
-
-        const autoIngest =
-          isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
-        if (autoIngest) {
-          realtimeIngestChain = realtimeIngestChain
-            .then(() =>
-              sendCaptureMessagePayload({
-                source_type: "realtime_voice",
-                text: finalText,
-                vision_detected_items: []
-              })
-            )
-            .then(() => {
-              appendRealtimeLogLine("system", t("voice_draft_updated"));
-            })
-            .catch((err) => {
-              appendRealtimeLogLine(
-                "system",
-                tf("voice_draft_update_failed", { msg: err?.message || "unknown error" })
-              );
-            });
-        }
-      }
+      realtimeUserTranscriptDelta = "";
+      queueRealtimeSpeechIngest(finalText);
     }
     return;
   }
@@ -2375,7 +2419,12 @@ function bindEvents() {
       }
       try {
         if (isRealtimeConnected()) {
+          const pendingText = String(realtimeUserTranscriptDelta || "").trim();
+          realtimeUserTranscriptDelta = "";
           stopRealtimeVoice();
+          if (pendingText) {
+            queueRealtimeSpeechIngest(pendingText);
+          }
         } else {
           await startRealtimeVoice();
         }
