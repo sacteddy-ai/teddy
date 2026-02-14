@@ -15,6 +15,7 @@ let realtimeIngestChain = Promise.resolve();
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
+const CAPTURE_STORAGE_TYPE_KEY = "teddy_capture_storage_type";
 
 let currentLang = "en";
 let ingredientLabelsUserId = "";
@@ -38,6 +39,7 @@ const I18N = {
     btn_use_same_origin: "Use Same Origin",
     remote_api_help_html:
       "Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.",
+    capture_storage_help: "Applies when finalizing to inventory.",
     word_none: "none",
     stat_total: "Total",
     stat_fresh: "Fresh",
@@ -131,7 +133,7 @@ const I18N = {
     camera_idle: "Camera idle.",
     voice_idle: "Voice idle.",
     meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
-    meta_inventory_line: "{qty} {unit} | exp {exp} | D{days}",
+    meta_inventory_line: "{qty} {unit} | {storage} | exp {exp} | D{days}",
     meta_recipe_line: "{chef} | score {score} | match {match}%",
     meta_recipe_missing: "missing: {missing}",
     meta_shopping_reasons: "reasons: {reasons}",
@@ -157,6 +159,7 @@ const I18N = {
     btn_use_same_origin: "같은 도메인 사용",
     remote_api_help_html:
       "대시보드는 Pages에, API는 다른 곳(예: 터널)에 띄웠을 때 사용하세요. API 서버에서 CORS를 <code>ENABLE_CORS=1</code> 로 켜야 합니다.",
+    capture_storage_help: "인벤토리로 확정할 때 이 보관 방식으로 저장됩니다.",
     word_none: "없음",
     stat_total: "전체",
     stat_fresh: "신선",
@@ -249,7 +252,7 @@ const I18N = {
     camera_idle: "카메라 대기 중.",
     voice_idle: "음성 대기 중.",
     meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
-    meta_inventory_line: "{qty}{unit} | 유통기한 {exp} | D{days}",
+    meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
     meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
     meta_recipe_missing: "부족: {missing}",
     meta_shopping_reasons: "이유: {reasons}",
@@ -352,6 +355,20 @@ function applyI18n() {
 function statusLabel(status) {
   const key = String(status || "").trim().toLowerCase() || "unknown";
   return STATUS_LABELS[currentLang]?.[key] ?? STATUS_LABELS.en[key] ?? key;
+}
+
+function storageLabel(storageType) {
+  const key = String(storageType || "").trim().toLowerCase();
+  if (key === "refrigerated") {
+    return t("storage_refrigerated");
+  }
+  if (key === "frozen") {
+    return t("storage_frozen");
+  }
+  if (key === "room") {
+    return t("storage_room");
+  }
+  return key || "";
 }
 
 function hasHangul(value) {
@@ -651,6 +668,27 @@ async function sendCaptureMessagePayload(payload) {
 
 function getUserId() {
   return $("userId").value.trim() || "demo-user";
+}
+
+function normalizeStorageType(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "refrigerated" || raw === "frozen" || raw === "room") {
+    return raw;
+  }
+  return "refrigerated";
+}
+
+function getCaptureStorageType() {
+  const el = $("captureStorageType");
+  return normalizeStorageType(el ? el.value : "");
+}
+
+function setCaptureStorageType(value) {
+  const el = $("captureStorageType");
+  if (!el) {
+    return;
+  }
+  el.value = normalizeStorageType(value);
 }
 
 function parseCsvItems(value) {
@@ -1657,7 +1695,7 @@ async function finalizeCaptureSession() {
     body: JSON.stringify({
       user_id: getUserId(),
       purchased_at: todayIso(),
-      storage_type: "refrigerated"
+      storage_type: getCaptureStorageType()
     })
   });
 
@@ -1691,6 +1729,7 @@ function buildInventoryNode(item) {
   node.querySelector(".meta").textContent = tf("meta_inventory_line", {
     qty: item.quantity,
     unit: item.unit,
+    storage: storageLabel(item.storage_type),
     exp: item.suggested_expiration_date,
     days: item.days_remaining
   });
@@ -1944,6 +1983,11 @@ function bindEvents() {
       }
     });
   }
+  if ($("captureStorageType")) {
+    $("captureStorageType").addEventListener("change", () => {
+      localStorage.setItem(CAPTURE_STORAGE_TYPE_KEY, getCaptureStorageType());
+    });
+  }
   $("saveApiBaseBtn").addEventListener("click", async (event) => {
     event.preventDefault();
     const value = $("apiBaseUrl").value;
@@ -2115,6 +2159,10 @@ function init() {
   const apiBaseInput = $("apiBaseUrl");
   if (apiBaseInput) {
     apiBaseInput.value = getApiBase();
+  }
+  const storedCaptureStorage = localStorage.getItem(CAPTURE_STORAGE_TYPE_KEY) || "";
+  if (storedCaptureStorage) {
+    setCaptureStorageType(storedCaptureStorage);
   }
 
   const purchased = document.querySelector("[name='purchased_at']");

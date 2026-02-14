@@ -136,6 +136,17 @@
               <button id="startCaptureSessionBtn" class="btn" type="button" data-i18n="btn_start_session">Start Session</button>
             </label>
           </div>
+          <div class="inline-fields">
+            <label>
+              <span data-i18n="label_storage_type">Storage Type</span>
+              <select id="captureStorageType">
+                <option value="refrigerated" data-i18n="storage_refrigerated">refrigerated</option>
+                <option value="frozen" data-i18n="storage_frozen">frozen</option>
+                <option value="room" data-i18n="storage_room">room</option>
+              </select>
+            </label>
+          </div>
+          <p class="muted" data-i18n="capture_storage_help">Applies when finalizing to inventory.</p>
           <label>
             <span data-i18n="label_voice_text_message">Voice/Text Message</span>
             <textarea id="captureMessageInput" rows="3" placeholder="This is tofu. This is kimchi. This is bacon. This is egg." data-i18n-placeholder="ph_capture_message_example"></textarea>
