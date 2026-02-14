@@ -92,26 +92,34 @@ export async function onRequest(context) {
     const transcriptionModel = safeString(payload?.transcription_model, cfg.transcriptionModel);
     const transcriptionLanguage = safeString(payload?.transcription_language, cfg.transcriptionLanguage);
 
+    // Match current Realtime schema:
+    // - transcription: session.audio.input.transcription
+    // - VAD: session.audio.input.turn_detection
     const sessionPrimary = {
       type: "realtime",
       model,
       instructions,
-      turn_detection: { type: "server_vad" },
-      input_audio_transcription: transcriptionModel
-        ? {
-            model: transcriptionModel,
-            language: transcriptionLanguage || undefined
-          }
-        : undefined,
       audio: {
         input: {
           // Helps for phone mic in near-field situations.
-          noise_reduction: { type: "near_field" }
+          noise_reduction: { type: "near_field" },
+          transcription: transcriptionModel
+            ? {
+                model: transcriptionModel,
+                language: transcriptionLanguage || undefined
+              }
+            : undefined,
+          turn_detection: {
+            type: "server_vad",
+            // We only want the transcript for inventory capture unless the UI explicitly requests a reply.
+            create_response: false
+          }
         },
         output: { voice }
       }
     };
 
+    // Some deployments may reject turn_detection updates; keep transcription enabled.
     const sessionFallback = {
       type: "realtime",
       model,

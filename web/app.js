@@ -14,6 +14,7 @@ let realtimeLastSharedImageAt = 0;
 let realtimeIngestChain = Promise.resolve();
 let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
+let realtimeLoggedEventTypes = new Set();
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
@@ -149,6 +150,7 @@ const I18N = {
     voice_connected: "Voice session connected.",
     voice_connection_state: "Voice connection: {state}",
     voice_listening: "Listening...",
+    voice_processing: "Processing...",
     voice_heard: "Heard: {text}",
     voice_start_failed: "Voice start failed: {msg}",
     voice_stopped: "Voice session stopped.",
@@ -285,6 +287,7 @@ const I18N = {
     voice_connected: "음성 연결됨.",
     voice_connection_state: "음성 연결 상태: {state}",
     voice_listening: "듣는 중...",
+    voice_processing: "처리 중...",
     voice_heard: "인식: {text}",
     voice_start_failed: "음성 시작 실패: {msg}",
     voice_stopped: "음성 세션 종료됨.",
@@ -1660,6 +1663,7 @@ async function startRealtimeVoice() {
   }
 
   clearRealtimeLog();
+  realtimeLoggedEventTypes = new Set();
   setRealtimeStatus(t("voice_starting"));
   try {
     const secret = await fetchRealtimeClientSecret();
@@ -1713,6 +1717,10 @@ async function startRealtimeVoice() {
                 transcription: {
                   model: "whisper-1",
                   language: lang
+                },
+                turn_detection: {
+                  type: "server_vad",
+                  create_response: false
                 }
               }
             }
@@ -1836,8 +1844,21 @@ function stopRealtimeVoice() {
   realtimeIngestChain = Promise.resolve();
   realtimeLastIngestedText = "";
   realtimeLastIngestedAt = 0;
+  realtimeLoggedEventTypes = new Set();
   setRealtimeStatus(t("voice_stopped"));
   updateQuickTalkButton();
+}
+
+function logRealtimeEventTypeOnce(type) {
+  const tpe = String(type || "").trim();
+  if (!tpe) {
+    return;
+  }
+  if (realtimeLoggedEventTypes.has(tpe)) {
+    return;
+  }
+  realtimeLoggedEventTypes.add(tpe);
+  appendRealtimeLogLine("event", tpe);
 }
 
 async function sendRealtimeTextToAgent(text, autoRespond = true) {
@@ -1947,10 +1968,22 @@ function handleRealtimeEvent(evt) {
     return;
   }
 
+  logRealtimeEventTypeOnce(type);
+
   if (type === "error") {
     const msg = evt?.error?.message || evt?.message || "Unknown realtime error.";
     appendRealtimeLogLine("error", msg);
     setRealtimeStatus(tf("voice_error_prefix", { msg }));
+    return;
+  }
+
+  if (type === "input_audio_buffer.speech_started") {
+    setRealtimeStatus(t("voice_listening"));
+    return;
+  }
+
+  if (type === "input_audio_buffer.speech_stopped" || type === "input_audio_buffer.committed") {
+    setRealtimeStatus(t("voice_processing"));
     return;
   }
 
@@ -2000,7 +2033,7 @@ function handleRealtimeEvent(evt) {
   }
 
   // Some variants send the final user transcript as a conversation item.
-  if (type === "conversation.item.done" && evt?.item?.role === "user") {
+  if ((type === "conversation.item.done" || type === "conversation.item.created") && evt?.item?.role === "user") {
     const parts = Array.isArray(evt.item?.content) ? evt.item.content : [];
     const transcriptParts = parts
       .map((p) => (p && typeof p.transcript === "string" ? p.transcript.trim() : ""))
