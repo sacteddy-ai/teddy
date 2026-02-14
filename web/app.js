@@ -3,6 +3,15 @@ let currentCaptureSessionId = "";
 let liveCameraStream = null;
 let liveCameraTimer = null;
 let liveCameraInFlight = false;
+let realtimePeer = null;
+let realtimeDataChannel = null;
+let realtimeMicStream = null;
+let realtimeRemoteStream = null;
+let realtimeUserTranscriptDelta = "";
+let realtimeAssistantTranscriptDelta = "";
+let realtimeLastVisionKey = "";
+let realtimeLastVisionSharedAt = 0;
+let realtimeIngestChain = Promise.resolve();
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 
@@ -99,6 +108,34 @@ function setCameraStatus(message) {
   el.textContent = message || "";
 }
 
+function setRealtimeStatus(message) {
+  const el = $("realtimeStatus");
+  if (!el) {
+    return;
+  }
+  el.textContent = message || "";
+}
+
+function appendRealtimeLogLine(prefix, message) {
+  const host = $("realtimeLog");
+  if (!host) {
+    return;
+  }
+  const ts = new Date().toLocaleTimeString();
+  const line = document.createElement("div");
+  line.className = "line";
+  line.textContent = `[${ts}] ${prefix}: ${message}`;
+  host.appendChild(line);
+  host.scrollTop = host.scrollHeight;
+}
+
+function clearRealtimeLog() {
+  const host = $("realtimeLog");
+  if (host) {
+    host.innerHTML = "";
+  }
+}
+
 function todayIso() {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -140,6 +177,50 @@ async function request(path, options = {}) {
   }
 
   return data;
+}
+
+async function sendCaptureMessagePayload(payload) {
+  let sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    await startCaptureSession();
+    sessionId = getCaptureSessionId();
+  }
+
+  const text = (payload?.text || "").trim();
+  const visionItems = Array.isArray(payload?.vision_detected_items) ? payload.vision_detected_items : [];
+  if (!text && visionItems.length === 0) {
+    throw new Error("Type a message or provide vision items.");
+  }
+
+  const result = await request(`/api/v1/capture/sessions/${sessionId}/message`, {
+    method: "POST",
+    body: JSON.stringify({
+      source_type: payload?.source_type || "text",
+      text,
+      vision_detected_items: visionItems
+    })
+  });
+
+  renderCaptureDraft(result.data.capture);
+  const parsedCommandCount = result?.data?.turn?.parsed_command_count ?? 0;
+  const reviewQueueCount =
+    result?.data?.review_queue_count ??
+    result?.data?.turn?.review_queue_item_count ??
+    result?.data?.capture?.review_queue_count ??
+    0;
+
+  if (parsedCommandCount === 0 && reviewQueueCount > 0) {
+    setCaptureError(`No confirmed ingredient yet. ${reviewQueueCount} phrase(s) need confirmation below.`);
+  } else if (parsedCommandCount === 0) {
+    setCaptureError("No ingredient was detected from this message. Add names explicitly or use Vision Items.");
+  } else if (reviewQueueCount > 0) {
+    setCaptureError(`${reviewQueueCount} phrase(s) still need confirmation below.`);
+  } else {
+    setCaptureError("");
+  }
+
+  await loadReviewQueue();
+  return result;
 }
 
 function getUserId() {
@@ -435,45 +516,14 @@ async function loadReviewQueue() {
 }
 
 async function sendCaptureMessage() {
-  let sessionId = getCaptureSessionId();
-  if (!sessionId) {
-    await startCaptureSession();
-    sessionId = getCaptureSessionId();
-  }
-
   const text = ($("captureMessageInput")?.value || "").trim();
   const visionItems = parseCsvItems(($("captureVisionItemsInput")?.value || "").trim());
 
-  if (!text && visionItems.length === 0) {
-    throw new Error("Type a message or provide vision items.");
-  }
-
-  const result = await request(`/api/v1/capture/sessions/${sessionId}/message`, {
-    method: "POST",
-    body: JSON.stringify({
-      source_type: "text",
-      text,
-      vision_detected_items: visionItems
-    })
+  await sendCaptureMessagePayload({
+    source_type: "text",
+    text,
+    vision_detected_items: visionItems
   });
-
-  renderCaptureDraft(result.data.capture);
-  const parsedCommandCount = result?.data?.turn?.parsed_command_count ?? 0;
-  const reviewQueueCount =
-    result?.data?.review_queue_count ??
-    result?.data?.turn?.review_queue_item_count ??
-    result?.data?.capture?.review_queue_count ??
-    0;
-
-  if (parsedCommandCount === 0 && reviewQueueCount > 0) {
-    setCaptureError(`No confirmed ingredient yet. ${reviewQueueCount} phrase(s) need confirmation below.`);
-  } else if (parsedCommandCount === 0) {
-    setCaptureError("No ingredient was detected from this message. Add names explicitly or use Vision Items.");
-  } else if (reviewQueueCount > 0) {
-    setCaptureError(`${reviewQueueCount} phrase(s) still need confirmation below.`);
-  } else {
-    setCaptureError("");
-  }
   $("captureMessageInput").value = "";
   $("captureVisionItemsInput").value = "";
 }
@@ -522,6 +572,7 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
     metaMessage += ` | ${warnings.join(" | ")}`;
   }
   setVisionAnalyzeMeta(metaMessage);
+  maybeShareVisionDetectionsToRealtime(detectedItems, { capture, metaMessage });
 
   const reviewQueueCount = result?.data?.review_queue_count ?? 0;
   if (detectedItems.length === 0) {
@@ -721,6 +772,361 @@ async function captureLiveCameraFrame(options = {}) {
     throw err;
   } finally {
     liveCameraInFlight = false;
+  }
+}
+
+function normalizeDetectedItemsKey(items) {
+  const list = Array.isArray(items) ? items : [];
+  const normalized = list
+    .map((v) => String(v || "").trim().toLowerCase())
+    .filter((v) => v.length > 0)
+    .sort();
+  return normalized.join("|");
+}
+
+function isRealtimeConnected() {
+  return Boolean(realtimeDataChannel && realtimeDataChannel.readyState === "open" && realtimePeer);
+}
+
+function realtimeSendEvent(evt) {
+  if (!isRealtimeConnected()) {
+    throw new Error("Realtime voice session is not connected.");
+  }
+  realtimeDataChannel.send(JSON.stringify(evt));
+}
+
+function maybeShareVisionDetectionsToRealtime(detectedItems, meta = {}) {
+  try {
+    if (!isRealtimeConnected()) {
+      return;
+    }
+    if ($("realtimeShareVision") && !$("realtimeShareVision").checked) {
+      return;
+    }
+
+    const key = normalizeDetectedItemsKey(detectedItems);
+    if (!key) {
+      return;
+    }
+
+    const now = Date.now();
+    // De-dupe and avoid spamming the agent during auto-capture loops.
+    if (key === realtimeLastVisionKey && now - realtimeLastVisionSharedAt < 15000) {
+      return;
+    }
+    if (now - realtimeLastVisionSharedAt < 2000) {
+      return;
+    }
+
+    realtimeLastVisionKey = key;
+    realtimeLastVisionSharedAt = now;
+
+    const text = `Vision detected: ${detectedItems.join(", ")}.`;
+    realtimeSendEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: meta?.metaMessage ? `${text}\n(${String(meta.metaMessage)})` : text
+          }
+        ]
+      }
+    });
+    // We intentionally do NOT call response.create here to avoid chatter on every frame.
+  } catch {
+    // best-effort only
+  }
+}
+
+async function fetchRealtimeClientSecret() {
+  const result = await request("/api/v1/realtime/token", {
+    method: "POST",
+    body: JSON.stringify({
+      // Keep the token lifetime short. The voice session uses it only for call setup.
+      expires_seconds: 600
+    })
+  });
+  const value = result?.data?.value || "";
+  if (!value) {
+    throw new Error("Realtime token missing from API response.");
+  }
+  return value;
+}
+
+function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
+  if (!pc || pc.iceGatheringState === "complete") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      pc.removeEventListener("icegatheringstatechange", onState);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onState = () => {
+      if (pc.iceGatheringState === "complete") {
+        finish();
+      }
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    pc.addEventListener("icegatheringstatechange", onState);
+  });
+}
+
+async function startRealtimeVoice() {
+  if (isRealtimeConnected()) {
+    setRealtimeStatus("Voice session already running.");
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone API is not supported in this browser.");
+  }
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    throw new Error("Microphone access requires HTTPS in most browsers.");
+  }
+
+  clearRealtimeLog();
+  setRealtimeStatus("Starting voice session...");
+  try {
+    const secret = await fetchRealtimeClientSecret();
+
+    const pc = new RTCPeerConnection();
+    realtimePeer = pc;
+    realtimeRemoteStream = new MediaStream();
+
+    pc.ontrack = (event) => {
+      if (!event?.track) {
+        return;
+      }
+      realtimeRemoteStream.addTrack(event.track);
+      const audio = $("realtimeAudio");
+      if (audio) {
+        audio.srcObject = realtimeRemoteStream;
+        audio.play().catch(() => {});
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState || "unknown";
+      setRealtimeStatus(`Voice connection: ${state}`);
+      if (state === "failed" || state === "closed" || state === "disconnected") {
+        // auto-cleanup
+        stopRealtimeVoice();
+      }
+    };
+
+    const dc = pc.createDataChannel("oai-events");
+    realtimeDataChannel = dc;
+
+    dc.addEventListener("open", () => {
+      appendRealtimeLogLine("system", "Voice data channel open.");
+      setRealtimeStatus("Voice session ready.");
+      const stopBtn = $("stopRealtimeBtn");
+      const startBtn = $("startRealtimeBtn");
+      if (stopBtn) stopBtn.disabled = false;
+      if (startBtn) startBtn.disabled = true;
+    });
+
+    dc.addEventListener("message", (event) => {
+      const raw = event?.data;
+      if (!raw || typeof raw !== "string") {
+        return;
+      }
+      let obj = null;
+      try {
+        obj = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      handleRealtimeEvent(obj);
+    });
+
+    dc.addEventListener("close", () => {
+      appendRealtimeLogLine("system", "Voice data channel closed.");
+    });
+
+    // Mic stream into the call.
+    realtimeMicStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: false
+    });
+    realtimeMicStream.getTracks().forEach((track) => pc.addTrack(track, realtimeMicStream));
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await waitForIceGatheringComplete(pc, 2500);
+
+    const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/sdp"
+      },
+      body: pc.localDescription?.sdp || offer.sdp
+    });
+
+    const answerSdp = await sdpRes.text();
+    if (!sdpRes.ok) {
+      throw new Error(answerSdp || `Realtime call failed: ${sdpRes.status}`);
+    }
+
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    setRealtimeStatus("Voice session connected.");
+  } catch (err) {
+    stopRealtimeVoice();
+    const msg = err?.message || String(err);
+    setRealtimeStatus(`Voice start failed: ${msg}`);
+    throw err;
+  }
+}
+
+function stopRealtimeVoice() {
+  const startBtn = $("startRealtimeBtn");
+  const stopBtn = $("stopRealtimeBtn");
+  if (startBtn) startBtn.disabled = false;
+  if (stopBtn) stopBtn.disabled = true;
+
+  try {
+    realtimeDataChannel?.close?.();
+  } catch {}
+  realtimeDataChannel = null;
+
+  try {
+    realtimePeer?.close?.();
+  } catch {}
+  realtimePeer = null;
+
+  try {
+    realtimeMicStream?.getTracks?.().forEach((t) => t.stop());
+  } catch {}
+  realtimeMicStream = null;
+
+  try {
+    realtimeRemoteStream?.getTracks?.().forEach((t) => t.stop());
+  } catch {}
+  realtimeRemoteStream = null;
+
+  const audio = $("realtimeAudio");
+  if (audio) {
+    audio.srcObject = null;
+  }
+
+  realtimeUserTranscriptDelta = "";
+  realtimeAssistantTranscriptDelta = "";
+  realtimeLastVisionKey = "";
+  realtimeLastVisionSharedAt = 0;
+  realtimeIngestChain = Promise.resolve();
+  setRealtimeStatus("Voice session stopped.");
+}
+
+async function sendRealtimeTextToAgent(text, autoRespond = true) {
+  const value = String(text || "").trim();
+  if (!value) {
+    return;
+  }
+  appendRealtimeLogLine("me(text)", value);
+  realtimeSendEvent({
+    type: "conversation.item.create",
+    item: {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: value }]
+    }
+  });
+  if (autoRespond) {
+    realtimeSendEvent({ type: "response.create" });
+  }
+}
+
+function handleRealtimeEvent(evt) {
+  const type = String(evt?.type || "").trim();
+  if (!type) {
+    return;
+  }
+
+  if (type === "error") {
+    const msg = evt?.error?.message || evt?.message || "Unknown realtime error.";
+    appendRealtimeLogLine("error", msg);
+    setRealtimeStatus(`Error: ${msg}`);
+    return;
+  }
+
+  // User speech transcription.
+  if (type.includes("input_audio_transcription")) {
+    const delta = typeof evt?.delta === "string" ? evt.delta : "";
+    const transcript = typeof evt?.transcript === "string" ? evt.transcript : "";
+
+    if (delta) {
+      realtimeUserTranscriptDelta = `${realtimeUserTranscriptDelta}${delta}`;
+      setRealtimeStatus("Listening...");
+      return;
+    }
+
+    const finalText = transcript.trim() || realtimeUserTranscriptDelta.trim();
+    if (finalText) {
+      appendRealtimeLogLine("me", finalText);
+      realtimeUserTranscriptDelta = "";
+      if ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked) {
+        // Queue capture updates so fast speech doesn't drop messages.
+        realtimeIngestChain = realtimeIngestChain
+          .then(() =>
+            sendCaptureMessagePayload({
+              source_type: "realtime_voice",
+              text: finalText,
+              vision_detected_items: []
+            })
+          )
+          .then(() => {
+            appendRealtimeLogLine("system", "Draft updated from speech.");
+          })
+          .catch((err) => {
+            appendRealtimeLogLine("system", `Draft update failed: ${err?.message || "unknown error"}`);
+          });
+      }
+    }
+    return;
+  }
+
+  // Assistant transcript from audio output.
+  if (type.includes("audio_transcript")) {
+    const delta = typeof evt?.delta === "string" ? evt.delta : "";
+    const transcript = typeof evt?.transcript === "string" ? evt.transcript : "";
+
+    if (delta) {
+      realtimeAssistantTranscriptDelta = `${realtimeAssistantTranscriptDelta}${delta}`;
+      return;
+    }
+
+    const finalText = transcript.trim() || realtimeAssistantTranscriptDelta.trim();
+    if (finalText) {
+      appendRealtimeLogLine("agent", finalText);
+      realtimeAssistantTranscriptDelta = "";
+    }
+    return;
+  }
+
+  // Some variants send the final assistant message as a conversation item.
+  if (type === "conversation.item.done" && evt?.item?.role === "assistant") {
+    const parts = Array.isArray(evt.item?.content) ? evt.item.content : [];
+    const transcriptParts = parts
+      .map((p) => (p && typeof p.transcript === "string" ? p.transcript.trim() : ""))
+      .filter((v) => v.length > 0);
+    if (transcriptParts.length > 0) {
+      appendRealtimeLogLine("agent", transcriptParts.join(" "));
+      realtimeAssistantTranscriptDelta = "";
+    }
   }
 }
 
@@ -1080,6 +1486,47 @@ function bindEvents() {
       setGlobalError(err.message);
     }
   });
+
+  if ($("startRealtimeBtn")) {
+    $("startRealtimeBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await startRealtimeVoice();
+      } catch (err) {
+        setGlobalError(err.message);
+      }
+    });
+  }
+  if ($("stopRealtimeBtn")) {
+    $("stopRealtimeBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      stopRealtimeVoice();
+    });
+  }
+  if ($("sendRealtimeTextBtn")) {
+    $("sendRealtimeTextBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await sendRealtimeTextToAgent(($("realtimeTextInput")?.value || "").trim(), true);
+        if ($("realtimeTextInput")) {
+          $("realtimeTextInput").value = "";
+        }
+      } catch (err) {
+        setGlobalError(err.message);
+      }
+    });
+  }
+  if ($("realtimeTextInput")) {
+    $("realtimeTextInput").addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      if ($("sendRealtimeTextBtn")) {
+        $("sendRealtimeTextBtn").click();
+      }
+    });
+  }
   $("finalizeCaptureBtn").addEventListener("click", async (event) => {
     event.preventDefault();
     try {
@@ -1123,7 +1570,9 @@ function init() {
   } else {
     setCameraStatus("Camera idle.");
   }
+  setRealtimeStatus("Voice idle.");
   window.addEventListener("beforeunload", stopLiveCamera);
+  window.addEventListener("beforeunload", stopRealtimeVoice);
   bindEvents();
   refreshAll();
 }

@@ -157,41 +157,70 @@
             <button id="analyzeVisionImageBtn" class="btn ghost" type="button">Analyze Image</button>
           </div>
           <div id="visionAnalyzeMeta" class="muted"></div>
-          <details class="camera-details">
-            <summary>Live Camera (experimental)</summary>
-            <div class="camera-panel">
-              <video id="liveCameraVideo" class="camera-video" autoplay playsinline muted></video>
-              <div class="inline-actions">
-                <button id="startCameraBtn" class="btn ghost" type="button">Start Camera</button>
-                <button id="stopCameraBtn" class="btn ghost" type="button">Stop Camera</button>
-                <button id="captureFrameBtn" class="btn ghost" type="button">Capture Frame</button>
-              </div>
-              <div class="inline-fields camera-fields">
-                <label>
-                  Facing
-                  <select id="cameraFacingMode">
-                    <option value="environment" selected>back</option>
-                    <option value="user">front</option>
-                  </select>
-                </label>
-                <label>
-                  Auto Capture
-                  <select id="cameraAutoInterval">
-                    <option value="0" selected>off</option>
-                    <option value="1500">1.5s</option>
-                    <option value="2000">2s</option>
-                    <option value="3000">3s</option>
-                    <option value="5000">5s</option>
-                  </select>
-                </label>
-              </div>
-              <div id="cameraStatus" class="muted"></div>
-            </div>
-          </details>
-          <div class="inline-actions">
-            <button id="sendCaptureMessageBtn" class="btn" type="button">Send Message</button>
-            <button id="finalizeCaptureBtn" class="btn secondary" type="button">Finalize To Inventory</button>
-          </div>
+           <details class="camera-details">
+             <summary>Live Camera (experimental)</summary>
+             <div class="camera-panel">
+               <video id="liveCameraVideo" class="camera-video" autoplay playsinline muted></video>
+               <div class="inline-actions">
+                 <button id="startCameraBtn" class="btn ghost" type="button">Start Camera</button>
+                 <button id="stopCameraBtn" class="btn ghost" type="button">Stop Camera</button>
+                 <button id="captureFrameBtn" class="btn ghost" type="button">Capture Frame</button>
+               </div>
+               <div class="inline-fields camera-fields">
+                 <label>
+                   Facing
+                   <select id="cameraFacingMode">
+                     <option value="environment" selected>back</option>
+                     <option value="user">front</option>
+                   </select>
+                 </label>
+                 <label>
+                   Auto Capture
+                   <select id="cameraAutoInterval">
+                     <option value="0" selected>off</option>
+                     <option value="1500">1.5s</option>
+                     <option value="2000">2s</option>
+                     <option value="3000">3s</option>
+                     <option value="5000">5s</option>
+                   </select>
+                 </label>
+               </div>
+               <div id="cameraStatus" class="muted"></div>
+             </div>
+           </details>
+           <details class="realtime-details">
+             <summary>Realtime Voice Agent (hybrid)</summary>
+             <div class="realtime-panel">
+               <div class="inline-actions">
+                 <button id="startRealtimeBtn" class="btn ghost" type="button">Start Voice</button>
+                 <button id="stopRealtimeBtn" class="btn ghost" type="button" disabled>Stop Voice</button>
+               </div>
+               <div class="inline-fields realtime-fields">
+                 <label class="checkline">
+                   <input id="realtimeAutoIngestSpeech" type="checkbox" checked>
+                   Auto-add my speech to draft
+                 </label>
+                 <label class="checkline">
+                   <input id="realtimeShareVision" type="checkbox" checked>
+                   Share vision detections to agent
+                 </label>
+               </div>
+               <label>
+                 Send Text (optional)
+                 <input id="realtimeTextInput" type="text" placeholder="What can I cook with what you see?">
+               </label>
+               <div class="inline-actions">
+                 <button id="sendRealtimeTextBtn" class="btn secondary tiny" type="button">Send To Agent</button>
+               </div>
+               <audio id="realtimeAudio" autoplay></audio>
+               <div id="realtimeStatus" class="muted"></div>
+               <div id="realtimeLog" class="realtime-log" aria-live="polite"></div>
+             </div>
+           </details>
+           <div class="inline-actions">
+             <button id="sendCaptureMessageBtn" class="btn" type="button">Send Message</button>
+             <button id="finalizeCaptureBtn" class="btn secondary" type="button">Finalize To Inventory</button>
+           </div>
           <div id="captureError" class="error-inline" hidden></div>
           <div id="captureMeta" class="muted"></div>
         </div>

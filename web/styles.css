@@ -253,6 +253,67 @@ textarea {
   color: var(--muted);
 }
 
+.realtime-details {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.realtime-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.realtime-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.realtime-fields {
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.86rem;
+}
+
+.checkline input {
+  width: auto;
+}
+
+.realtime-log {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+  max-height: 220px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.realtime-log .line {
+  margin: 0 0 6px;
+}
+
+.realtime-log .line:last-child {
+  margin-bottom: 0;
+}
+
 .camera-panel {
   display: grid;
   gap: 10px;
