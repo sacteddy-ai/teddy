@@ -9,8 +9,8 @@ let realtimeMicStream = null;
 let realtimeRemoteStream = null;
 let realtimeUserTranscriptDelta = "";
 let realtimeAssistantTranscriptDelta = "";
-let realtimeLastVisionKey = "";
-let realtimeLastVisionSharedAt = 0;
+let realtimeLastSharedImageKey = "";
+let realtimeLastSharedImageAt = 0;
 let realtimeIngestChain = Promise.resolve();
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
@@ -533,7 +533,13 @@ function getSegmentationMode() {
 }
 
 async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
-  const { textHint = null, segmentationMode = null, refreshMode = "light" } = options || {};
+  const {
+    textHint = null,
+    segmentationMode = null,
+    refreshMode = "light",
+    realtimeAutoRespond = false,
+    realtimePrompt = null
+  } = options || {};
   let sessionId = getCaptureSessionId();
   if (!sessionId) {
     await startCaptureSession();
@@ -572,7 +578,11 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
     metaMessage += ` | ${warnings.join(" | ")}`;
   }
   setVisionAnalyzeMeta(metaMessage);
-  maybeShareVisionDetectionsToRealtime(detectedItems, { capture, metaMessage });
+  maybeShareVisionImageToRealtime(imageDataUrl, {
+    textHint,
+    prompt: realtimePrompt,
+    autoRespond: Boolean(realtimeAutoRespond)
+  });
 
   const reviewQueueCount = result?.data?.review_queue_count ?? 0;
   if (detectedItems.length === 0) {
@@ -591,6 +601,44 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
   return result;
 }
 
+function downscaleImageDataUrl(imageDataUrl, options = {}) {
+  const { maxSize = 1024, quality = 0.85 } = options || {};
+  const raw = String(imageDataUrl || "").trim();
+  if (!raw.startsWith("data:image/")) {
+    return Promise.resolve(raw);
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = Number(img.naturalWidth || img.width || 0);
+      const h = Number(img.naturalHeight || img.height || 0);
+      if (!w || !h) {
+        resolve(raw);
+        return;
+      }
+
+      const maxDim = Math.max(w, h);
+      const scale = maxDim > maxSize ? maxSize / maxDim : 1;
+      const cw = Math.max(1, Math.round(w * scale));
+      const ch = Math.max(1, Math.round(h * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(raw);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, cw, ch);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(raw);
+    img.src = raw;
+  });
+}
+
 async function analyzeVisionImage() {
   const imageInput = $("captureVisionImageInput");
   const imageFile = imageInput?.files?.[0];
@@ -599,7 +647,12 @@ async function analyzeVisionImage() {
   }
 
   const imageDataUrl = await readFileAsDataUrl(imageFile);
-  await analyzeVisionDataUrl(imageDataUrl, { refreshMode: "light" });
+  const resized = await downscaleImageDataUrl(imageDataUrl, { maxSize: 1024, quality: 0.85 });
+  await analyzeVisionDataUrl(resized, {
+    refreshMode: "light",
+    realtimeAutoRespond: true,
+    realtimePrompt: "이 이미지에서 보이는 식자재를 간단히 말해줘."
+  });
 }
 
 function captureVideoFrameAsDataUrl(videoEl, options = {}) {
@@ -756,7 +809,11 @@ async function captureLiveCameraFrame(options = {}) {
   liveCameraInFlight = true;
   try {
     const dataUrl = captureVideoFrameAsDataUrl(video, { maxSize: 960, quality: 0.85 });
-    await analyzeVisionDataUrl(dataUrl, { refreshMode: "light" });
+    await analyzeVisionDataUrl(dataUrl, {
+      refreshMode: "light",
+      realtimeAutoRespond: !isAuto,
+      realtimePrompt: isAuto ? null : "이 이미지에서 보이는 식자재를 간단히 말해줘."
+    });
   } catch (err) {
     const msg = err?.message || "Vision analysis failed.";
     setCaptureError(msg);
@@ -775,13 +832,15 @@ async function captureLiveCameraFrame(options = {}) {
   }
 }
 
-function normalizeDetectedItemsKey(items) {
-  const list = Array.isArray(items) ? items : [];
-  const normalized = list
-    .map((v) => String(v || "").trim().toLowerCase())
-    .filter((v) => v.length > 0)
-    .sort();
-  return normalized.join("|");
+function normalizeSharedImageKey(imageDataUrl) {
+  const raw = String(imageDataUrl || "").trim();
+  if (!raw.startsWith("data:image/")) {
+    return "";
+  }
+  // Avoid hashing the full payload; just use a stable head/tail + length.
+  const head = raw.slice(0, 48);
+  const tail = raw.slice(-160);
+  return `${raw.length}:${head}:${tail}`;
 }
 
 function isRealtimeConnected() {
@@ -795,7 +854,7 @@ function realtimeSendEvent(evt) {
   realtimeDataChannel.send(JSON.stringify(evt));
 }
 
-function maybeShareVisionDetectionsToRealtime(detectedItems, meta = {}) {
+function maybeShareVisionImageToRealtime(imageDataUrl, options = {}) {
   try {
     if (!isRealtimeConnected()) {
       return;
@@ -804,38 +863,57 @@ function maybeShareVisionDetectionsToRealtime(detectedItems, meta = {}) {
       return;
     }
 
-    const key = normalizeDetectedItemsKey(detectedItems);
+    const rawImage = String(imageDataUrl || "").trim();
+    if (!rawImage.startsWith("data:image/")) {
+      return;
+    }
+
+    const key = normalizeSharedImageKey(rawImage);
     if (!key) {
       return;
     }
 
     const now = Date.now();
     // De-dupe and avoid spamming the agent during auto-capture loops.
-    if (key === realtimeLastVisionKey && now - realtimeLastVisionSharedAt < 15000) {
+    if (key === realtimeLastSharedImageKey && now - realtimeLastSharedImageAt < 20000) {
       return;
     }
-    if (now - realtimeLastVisionSharedAt < 2000) {
+    if (now - realtimeLastSharedImageAt < 3000) {
       return;
     }
 
-    realtimeLastVisionKey = key;
-    realtimeLastVisionSharedAt = now;
+    realtimeLastSharedImageKey = key;
+    realtimeLastSharedImageAt = now;
 
-    const text = `Vision detected: ${detectedItems.join(", ")}.`;
+    const hint = options?.textHint ? String(options.textHint).trim() : "";
+    const prompt = options?.prompt ? String(options.prompt).trim() : "";
+    const content = [];
+    if (hint || prompt) {
+      const parts = [];
+      if (hint) {
+        parts.push(`User hint: ${hint}`);
+      }
+      if (prompt) {
+        parts.push(prompt);
+      }
+      content.push({ type: "input_text", text: parts.join("\n") });
+    }
+    content.push({ type: "input_image", image_url: rawImage });
+
     realtimeSendEvent({
       type: "conversation.item.create",
       item: {
         type: "message",
         role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: meta?.metaMessage ? `${text}\n(${String(meta.metaMessage)})` : text
-          }
-        ]
+        content
       }
     });
-    // We intentionally do NOT call response.create here to avoid chatter on every frame.
+
+    const autoRespond = Boolean(options?.autoRespond);
+    if (autoRespond) {
+      appendRealtimeLogLine("system", "Shared snapshot to agent.");
+      realtimeSendEvent({ type: "response.create" });
+    }
   } catch {
     // best-effort only
   }
@@ -1025,8 +1103,8 @@ function stopRealtimeVoice() {
 
   realtimeUserTranscriptDelta = "";
   realtimeAssistantTranscriptDelta = "";
-  realtimeLastVisionKey = "";
-  realtimeLastVisionSharedAt = 0;
+  realtimeLastSharedImageKey = "";
+  realtimeLastSharedImageAt = 0;
   realtimeIngestChain = Promise.resolve();
   setRealtimeStatus("Voice session stopped.");
 }

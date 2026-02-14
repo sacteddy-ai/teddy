@@ -8,7 +8,7 @@ function resolveOpenAiRealtimeConfig(env) {
   const voice = safeString(env?.OPENAI_REALTIME_VOICE, "alloy");
   const instructions = safeString(
     env?.OPENAI_REALTIME_INSTRUCTIONS,
-    "You are a helpful fridge assistant. Speak naturally and ask short clarification questions when needed."
+    "You are a helpful fridge assistant. You may receive camera snapshots as images. Speak naturally, describe visible ingredients when asked, and ask short clarification questions when uncertain."
   );
   const transcriptionModel = safeString(env?.OPENAI_REALTIME_TRANSCRIPTION_MODEL, "whisper-1");
   const transcriptionLanguage = safeString(env?.OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE, "ko");
