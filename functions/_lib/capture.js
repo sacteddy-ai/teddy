@@ -1,5 +1,6 @@
 import { addIngredientAliasOverride } from "./catalog.js";
 import { applyConversationCommandsToDraft, getDraftSummary } from "./chat.js";
+import { filterReviewCandidatesWithPhraseClassifier } from "./review_phrase_classifier.js";
 import { nowIso, normalizeWhitespace, normalizeWord, normalizeIngredientKey } from "./util.js";
 import {
   captureSessionKey,
@@ -190,7 +191,12 @@ export async function buildCaptureSessionView(context, session) {
 
 export async function applyCaptureSessionParsedInput(context, session, sourceType, textInput, visionDetectedItems, parseResult) {
   const commands = Array.isArray(parseResult?.commands) ? parseResult.commands : [];
-  const reviewCandidates = Array.isArray(parseResult?.review_candidates) ? parseResult.review_candidates : [];
+  const reviewCandidatesRaw = Array.isArray(parseResult?.review_candidates) ? parseResult.review_candidates : [];
+  const reviewCandidates = await filterReviewCandidatesWithPhraseClassifier(
+    context,
+    session?.user_id ? String(session.user_id) : "demo-user",
+    reviewCandidatesRaw
+  );
 
   const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
   const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);

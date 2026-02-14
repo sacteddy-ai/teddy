@@ -21,6 +21,10 @@ export function aliasOverridesKey(userId) {
   return keyFor("ingredient_alias_overrides", userId);
 }
 
+export function phraseClassifierCacheKey(userId) {
+  return keyFor("ingredient_phrase_classifier_cache", userId);
+}
+
 export function captureSessionKey(sessionId) {
   const id = String(sessionId || "").trim();
   if (!id) {
@@ -46,4 +50,3 @@ export async function getObject(env, key) {
 export async function putObject(env, key, obj) {
   await kvPutJson(env, key, obj && typeof obj === "object" ? obj : null);
 }
-
