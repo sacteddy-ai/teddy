@@ -3,6 +3,7 @@ import { detectIngredientsFromImage } from "../../../_lib/vision.js";
 import { captureSessionKey, getObject } from "../../../_lib/store.js";
 import { buildAliasLookup } from "../../../_lib/catalog.js";
 import { parseConversationCommands } from "../../../_lib/chat.js";
+import { augmentParseResultWithChatLlmExtraction } from "../../../_lib/chat_llm_extractor.js";
 import { applyCaptureSessionParsedInput } from "../../../_lib/capture.js";
 
 export async function onRequest(context) {
@@ -50,7 +51,14 @@ export async function onRequest(context) {
       }
 
       const aliasLookup = await buildAliasLookup(context, session.user_id);
-      const parseResult = parseConversationCommands(textHintInput, detectedItems, aliasLookup);
+      let parseResult = parseConversationCommands(textHintInput, detectedItems, aliasLookup);
+      parseResult = await augmentParseResultWithChatLlmExtraction(
+        context,
+        session.user_id,
+        textHintInput,
+        aliasLookup,
+        parseResult
+      );
       captureApplyResult = await applyCaptureSessionParsedInput(
         context,
         session,
@@ -93,4 +101,3 @@ export async function onRequest(context) {
     return errorResponse(context, msg, 400);
   }
 }
-

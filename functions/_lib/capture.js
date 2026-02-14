@@ -192,11 +192,14 @@ export async function buildCaptureSessionView(context, session) {
 export async function applyCaptureSessionParsedInput(context, session, sourceType, textInput, visionDetectedItems, parseResult) {
   const commands = Array.isArray(parseResult?.commands) ? parseResult.commands : [];
   const reviewCandidatesRaw = Array.isArray(parseResult?.review_candidates) ? parseResult.review_candidates : [];
-  const reviewCandidates = await filterReviewCandidatesWithPhraseClassifier(
-    context,
-    session?.user_id ? String(session.user_id) : "demo-user",
-    reviewCandidatesRaw
-  );
+  let reviewCandidates = reviewCandidatesRaw;
+  if (!parseResult?.llm_extraction_used) {
+    reviewCandidates = await filterReviewCandidatesWithPhraseClassifier(
+      context,
+      session?.user_id ? String(session.user_id) : "demo-user",
+      reviewCandidatesRaw
+    );
+  }
 
   const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
   const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);
@@ -224,6 +227,8 @@ export async function applyCaptureSessionParsedInput(context, session, sourceTyp
     review_queue_items: queuedReviewItems,
     review_queue_item_count: queuedReviewItems.length,
     finalize_requested: Boolean(parseResult?.finalize_requested),
+    llm_extraction_used: Boolean(parseResult?.llm_extraction_used),
+    llm_extraction_model: parseResult?.llm_extraction_model ? String(parseResult.llm_extraction_model) : null,
     created_at: now
   };
 

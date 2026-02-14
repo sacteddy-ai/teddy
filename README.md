@@ -112,6 +112,9 @@ This repo also includes a Cloudflare Pages Functions backend under `functions/`,
 1. Optional (Vision):
    - Add an environment variable / secret `OPENAI_API_KEY`.
    - Optional: `OPENAI_VISION_MODEL` (default: `gpt-4.1-mini`), `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`).
+1. Optional (LLM text extraction for cleaner Korean capture):
+   - Add `OPENAI_ENABLE_CHAT_LLM_EXTRACTOR=true` to extract only food items from free-form speech/text.
+   - Optional: `OPENAI_TEXT_EXTRACTOR_MODEL` (default: `gpt-4.1-mini`).
 1. Deploy and open your Pages URL (e.g. `https://your-project.pages.dev`).
 
 Static data used by the Cloudflare backend is served from `web/data/*.json`.
@@ -123,6 +126,20 @@ $env:OPENAI_API_KEY = "sk-..."
 # optional
 $env:OPENAI_VISION_MODEL = "gpt-4.1-mini"
 $env:OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+# optional (recommended): LLM extraction for Conversational Capture (reduces filler words like "옆", "아래칸", "있어")
+$env:OPENAI_ENABLE_CHAT_LLM_EXTRACTOR = "true"
+$env:OPENAI_TEXT_EXTRACTOR_MODEL = "gpt-4.1-mini"
+# optional
+$env:OPENAI_TEXT_EXTRACTOR_MAX_ITEMS = "14"
+$env:OPENAI_TEXT_EXTRACTOR_MAX_CHARS = "800"
+$env:OPENAI_TEXT_EXTRACTOR_CACHE_DAYS = "30"
+
+# optional (LLM): classify pending review phrases as food vs spatial/other (runs only on review queue candidates)
+$env:OPENAI_ENABLE_REVIEW_PHRASE_CLASSIFIER = "true"
+$env:OPENAI_TEXT_CLASSIFIER_MODEL = "gpt-4.1-mini"
+$env:OPENAI_TEXT_CLASSIFIER_MAX_ITEMS = "12"
+$env:OPENAI_TEXT_CLASSIFIER_CACHE_DAYS = "30"
 
 # optional SAM3 segmentation hook
 $env:SAM3_SEGMENT_API_URL = "https://your-sam3-service/segment"

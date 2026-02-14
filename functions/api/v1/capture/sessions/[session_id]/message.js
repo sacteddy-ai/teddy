@@ -2,6 +2,7 @@ import { jsonResponse, errorResponse, withOptionsCors, readJson } from "../../..
 import { captureSessionKey, getObject } from "../../../../../_lib/store.js";
 import { buildAliasLookup } from "../../../../../_lib/catalog.js";
 import { parseConversationCommands } from "../../../../../_lib/chat.js";
+import { augmentParseResultWithChatLlmExtraction } from "../../../../../_lib/chat_llm_extractor.js";
 import { applyCaptureSessionParsedInput } from "../../../../../_lib/capture.js";
 
 export async function onRequest(context) {
@@ -39,7 +40,14 @@ export async function onRequest(context) {
     }
 
     const aliasLookup = await buildAliasLookup(context, session.user_id);
-    const parseResult = parseConversationCommands(textInput, visionDetectedItems, aliasLookup);
+    let parseResult = parseConversationCommands(textInput, visionDetectedItems, aliasLookup);
+    parseResult = await augmentParseResultWithChatLlmExtraction(
+      context,
+      session.user_id,
+      textInput,
+      aliasLookup,
+      parseResult
+    );
     const applyResult = await applyCaptureSessionParsedInput(
       context,
       session,
@@ -58,4 +66,3 @@ export async function onRequest(context) {
     return errorResponse(context, msg, 400);
   }
 }
-

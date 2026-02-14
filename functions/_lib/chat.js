@@ -317,6 +317,7 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
   const commands = [];
   const reviewCandidatesMap = new Map();
   const finalizeRequested = containsFinalizeIntent(text || "");
+  let removeIntentDetected = false;
 
   if (text && String(text).trim()) {
     const clauses = String(text)
@@ -331,6 +332,9 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
       }
 
       const isRemove = containsRemoveIntent(normalizedClause);
+      if (isRemove) {
+        removeIntentDetected = true;
+      }
       const qtyInfo = parseQuantityFromClause(normalizedClause);
       const tokens = tokenizeClause(normalizedClause).map((t) => stripAmbiguousTrailingParticleIfKnownAlias(t, aliasLookup));
 
@@ -413,6 +417,7 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
   return {
     commands,
     review_candidates: Array.from(reviewCandidatesMap.values()).sort((a, b) => String(a.phrase).localeCompare(String(b.phrase))),
-    finalize_requested: finalizeRequested
+    finalize_requested: finalizeRequested,
+    remove_intent_detected: removeIntentDetected
   };
 }

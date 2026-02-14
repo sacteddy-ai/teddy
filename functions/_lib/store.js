@@ -25,6 +25,10 @@ export function phraseClassifierCacheKey(userId) {
   return keyFor("ingredient_phrase_classifier_cache", userId);
 }
 
+export function chatLlmExtractorCacheKey(userId) {
+  return keyFor("chat_llm_extractor_cache", userId);
+}
+
 export function captureSessionKey(sessionId) {
   const id = String(sessionId || "").trim();
   if (!id) {
