@@ -1690,6 +1690,7 @@ async function startRealtimeVoice() {
         realtimeSendEvent({
           type: "session.update",
           session: {
+            type: "realtime",
             audio: {
               input: {
                 noise_reduction: { type: "near_field" },
