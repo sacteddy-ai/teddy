@@ -1,0 +1,85 @@
+{
+  "version": "2026-02-13",
+  "recipes": [
+    {
+      "id": "r001",
+      "name": "Kimchi Fried Rice",
+      "chef": "Chef Min Signature",
+      "ingredient_keys": ["kimchi", "egg", "green_onion"],
+      "optional_ingredient_keys": ["pork", "onion"],
+      "tags": ["korean", "quick", "pan"]
+    },
+    {
+      "id": "r002",
+      "name": "Soft Tofu Stew",
+      "chef": "Chef Han Home Style",
+      "ingredient_keys": ["tofu", "egg", "green_onion"],
+      "optional_ingredient_keys": ["pork", "kimchi", "onion"],
+      "tags": ["korean", "stew", "comfort"]
+    },
+    {
+      "id": "r003",
+      "name": "Egg Roll Omelette",
+      "chef": "Chef Park Brunch",
+      "ingredient_keys": ["egg", "green_onion", "onion"],
+      "optional_ingredient_keys": ["milk"],
+      "tags": ["breakfast", "quick", "pan"]
+    },
+    {
+      "id": "r004",
+      "name": "Chicken Stir Fry",
+      "chef": "Chef Lee Wok",
+      "ingredient_keys": ["chicken", "onion", "green_onion"],
+      "optional_ingredient_keys": ["potato"],
+      "tags": ["stir-fry", "dinner", "protein"]
+    },
+    {
+      "id": "r005",
+      "name": "Beef Potato Soup",
+      "chef": "Chef Jang Classic",
+      "ingredient_keys": ["beef", "potato", "onion"],
+      "optional_ingredient_keys": ["green_onion"],
+      "tags": ["soup", "dinner", "warm"]
+    },
+    {
+      "id": "r006",
+      "name": "Tofu Kimchi Bowl",
+      "chef": "Chef Yoon Studio",
+      "ingredient_keys": ["tofu", "kimchi"],
+      "optional_ingredient_keys": ["egg", "green_onion"],
+      "tags": ["bowl", "quick", "korean"]
+    },
+    {
+      "id": "r007",
+      "name": "Pork Onion Rice Bowl",
+      "chef": "Chef Song Street",
+      "ingredient_keys": ["pork", "onion"],
+      "optional_ingredient_keys": ["egg", "green_onion"],
+      "tags": ["rice-bowl", "dinner", "protein"]
+    },
+    {
+      "id": "r008",
+      "name": "Creamy Milk Omelette",
+      "chef": "Chef Choi Brunch",
+      "ingredient_keys": ["egg", "milk"],
+      "optional_ingredient_keys": ["onion", "green_onion"],
+      "tags": ["breakfast", "brunch", "quick"]
+    },
+    {
+      "id": "r009",
+      "name": "Apple Potato Salad",
+      "chef": "Chef Kim Deli",
+      "ingredient_keys": ["apple", "potato", "egg"],
+      "optional_ingredient_keys": ["onion"],
+      "tags": ["salad", "side", "cold"]
+    },
+    {
+      "id": "r010",
+      "name": "Simple Kimchi Soup",
+      "chef": "Chef Min Signature",
+      "ingredient_keys": ["kimchi", "onion", "green_onion"],
+      "optional_ingredient_keys": ["tofu", "pork"],
+      "tags": ["soup", "korean", "quick"]
+    }
+  ]
+}

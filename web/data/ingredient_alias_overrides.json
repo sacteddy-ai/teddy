@@ -1,0 +1,56 @@
+﻿{
+    "version":  "2026-02-13",
+    "source":  "internal.overrides.v1",
+    "items":  [
+                  {
+                      "ingredient_key":  "ganjang_gejang",
+                      "display_name":  "Ganjang Gejang",
+                      "aliases":  [
+                                      "ganjang gejang",
+                                      "soy marinated crab",
+                                      "korean soy crab",
+                                      "gejang",
+                                      "간장게장",
+                                      "게장",
+                                      "양념게장"
+                                  ]
+                  },
+                  {
+                      "ingredient_key":  "mosi_clam",
+                      "display_name":  "Mosi Clam",
+                      "aliases":  [
+                                      "mosi clam",
+                                      "venus clam",
+                                      "short-neck clam",
+                                      "clam",
+                                      "모시조개",
+                                      "조개",
+                                      "바지락"
+                                  ]
+                  },
+                  {
+                      "ingredient_key":  "고추짱아치",
+                      "display_name":  "고추짱아치",
+                      "aliases":  [
+                                      "고추짱아치"
+                                  ]
+                  },
+                  {
+                      "ingredient_key":  "명란젓",
+                      "display_name":  "명란젓",
+                      "aliases":  [
+                                      "명란젓"
+                                  ]
+                  },
+                  {
+                      "ingredient_key":  "송로버섯",
+                      "display_name":  "송로버섯",
+                      "aliases":  [
+                                      "송로버섯"
+                                  ]
+                  }
+              ]
+}
+
+
+

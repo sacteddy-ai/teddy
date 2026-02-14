@@ -1,0 +1,1448 @@
+openapi: 3.0.3
+info:
+  title: Teddy MVP API
+  version: 0.7.0
+  description: |
+    Refrigerator inventory MVP API.
+    Features:
+    - expiration suggestion (OCR > product shelf-life > average rule)
+    - conversational capture session (voice/text/vision hybrid)
+    - unknown ingredient review queue + alias learning
+    - AI vision image analyze endpoint (OpenAI + optional SAM3 segmentation hook)
+    - OCR date parser endpoint
+    - inventory create/list/summary/consume
+    - expiration notifications
+    - recipe recommendations from current inventory
+    - shopping suggestions from inventory + recipe gaps
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+  /api/v1/expiration/suggest:
+    post:
+      summary: Suggest expiration date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpirationSuggestRequest"
+      responses:
+        "200":
+          description: Suggestion generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpirationSuggestResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/admin/reload-ingredient-catalog:
+    post:
+      summary: Reload ingredient lexicon and shelf-life rule cache
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Reload completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reloaded:
+                        type: array
+                        items:
+                          type: string
+                      reloaded_count:
+                        type: integer
+                      reloaded_at:
+                        type: string
+                        format: date-time
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/chat/intake:
+    post:
+      summary: One-shot conversational intake to inventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatIntakeRequest"
+      responses:
+        "200":
+          description: Intake processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      draft_items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/CaptureDraftItem"
+                      created_items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryItem"
+                      created_notifications_count:
+                        type: integer
+                      auto_mapped_review_count:
+                        type: integer
+                        description: Number of unknown pending review items auto-mapped during finalize
+                      review_queue_items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IngredientReviewQueueItem"
+                      review_queue_count:
+                        type: integer
+                      message:
+                        type: string
+                        nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/vision/analyze:
+    post:
+      summary: Analyze image with AI vision and optionally append to capture session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisionAnalyzeRequest"
+      responses:
+        "200":
+          description: Vision analyzed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/VisionAnalyzeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/ingredients/catalog:
+    get:
+      summary: Search ingredient catalog entries
+      parameters:
+        - in: query
+          name: query
+          schema:
+            type: string
+        - in: query
+          name: top_n
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+      responses:
+        "200":
+          description: Catalog search result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      query:
+                        type: string
+                        nullable: true
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IngredientCatalogEntry"
+                      count:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/ingredients/aliases/learn:
+    post:
+      summary: Learn a new alias mapping (writes ingredient_alias_overrides.json)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredient_key, alias]
+              properties:
+                ingredient_key:
+                  type: string
+                alias:
+                  type: string
+                display_name:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Alias learned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      ingredient_key:
+                        type: string
+                      display_name:
+                        type: string
+                      alias:
+                        type: string
+                      alias_added:
+                        type: boolean
+                      alias_count:
+                        type: integer
+                      catalog_version:
+                        type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/ingredients/review-queue:
+    get:
+      summary: List unknown/low-confidence ingredient phrases waiting for confirmation
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, mapped, ignored, all]
+            default: pending
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+      responses:
+        "200":
+          description: Review queue list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IngredientReviewQueueItem"
+                      count:
+                        type: integer
+                      total_count:
+                        type: integer
+                      status:
+                        type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/ingredients/review-queue/{queue_item_id}/resolve:
+    post:
+      summary: Resolve a review queue item by mapping alias or ignoring
+      parameters:
+        - in: path
+          name: queue_item_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [map, ignore]
+                  default: map
+                ingredient_key:
+                  type: string
+                  nullable: true
+                display_name:
+                  type: string
+                  nullable: true
+                user_id:
+                  type: string
+                  nullable: true
+                apply_to_session:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: Queue item resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      item:
+                        $ref: "#/components/schemas/IngredientReviewQueueItem"
+                      alias_result:
+                        type: object
+                        nullable: true
+                      session_apply:
+                        type: object
+                        nullable: true
+                      capture:
+                        $ref: "#/components/schemas/CaptureView"
+                        nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Queue item not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/capture/sessions/start:
+    post:
+      summary: Start a conversational capture session
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CaptureView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/capture/sessions/{session_id}:
+    get:
+      summary: Get capture session
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Capture session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CaptureView"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/capture/sessions/{session_id}/message:
+    post:
+      summary: Append conversational message to capture session
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source_type:
+                  type: string
+                  enum: [text, voice, vision]
+                  default: text
+                text:
+                  type: string
+                  nullable: true
+                vision_detected_items:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Message processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      capture:
+                        $ref: "#/components/schemas/CaptureView"
+                      turn:
+                        $ref: "#/components/schemas/CaptureTurn"
+                      review_queue_items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IngredientReviewQueueItem"
+                      review_queue_count:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/capture/sessions/{session_id}/finalize:
+    post:
+      summary: Finalize capture session and create inventory items
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                purchased_at:
+                  type: string
+                  format: date
+                storage_type:
+                  type: string
+                  enum: [refrigerated, frozen, room]
+                opened_at:
+                  type: string
+                  format: date
+                  nullable: true
+      responses:
+        "200":
+          description: Session finalized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      capture:
+                        $ref: "#/components/schemas/CaptureView"
+                      created_items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryItem"
+                      created_notifications_count:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/ocr/parse-date:
+    post:
+      summary: Parse expiration-like date from OCR raw text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [raw_text]
+              properties:
+                raw_text:
+                  type: string
+                  example: "BEST BEFORE 2026-03-20"
+      responses:
+        "200":
+          description: OCR parse result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OcrParseResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/inventory/items:
+    post:
+      summary: Create inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      item:
+                        $ref: "#/components/schemas/InventoryItem"
+                      notifications:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Notification"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      summary: List inventory items
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [fresh, expiring_soon, expired]
+      responses:
+        "200":
+          description: Inventory list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryItem"
+                      count:
+                        type: integer
+  /api/v1/inventory/items/{item_id}/consume:
+    post:
+      summary: Consume quantity from inventory item
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                consumed_quantity:
+                  type: number
+                  default: 1
+                  minimum: 0.01
+                mark_opened:
+                  type: boolean
+                  default: false
+                opened_at:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      item:
+                        $ref: "#/components/schemas/InventoryItem"
+                      consumed_quantity:
+                        type: number
+                      should_reorder:
+                        type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/v1/inventory/summary:
+    get:
+      summary: Inventory summary by status
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total_items:
+                        type: integer
+                      fresh:
+                        type: integer
+                      expiring_soon:
+                        type: integer
+                      expired:
+                        type: integer
+  /api/v1/notifications:
+    get:
+      summary: List notifications
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, sent, failed]
+        - in: query
+          name: due_until
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Notification"
+                      count:
+                        type: integer
+  /api/v1/notifications/run-due:
+    post:
+      summary: Dispatch due notifications (pending -> sent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                as_of_datetime:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Dispatch result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      as_of_datetime:
+                        type: string
+                        format: date-time
+                      sent_count:
+                        type: integer
+                      sent_notifications:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Notification"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/recommendations/recipes:
+    get:
+      summary: Recommend recipes from current inventory
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+        - in: query
+          name: top_n
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+      responses:
+        "200":
+          description: Recipe recommendation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/RecipeRecommendation"
+                      count:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/shopping/suggestions:
+    get:
+      summary: Suggest shopping list from inventory state + recipe gaps
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+        - in: query
+          name: top_n
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+        - in: query
+          name: top_recipe_count
+          schema:
+            type: integer
+            default: 3
+            minimum: 1
+        - in: query
+          name: low_stock_threshold
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Shopping suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ShoppingSuggestion"
+                      count:
+                        type: integer
+                      low_stock_threshold:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+components:
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+  schemas:
+    ChatIntakeRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+        text:
+          type: string
+          nullable: true
+        vision_detected_items:
+          type: array
+          items:
+            type: string
+        purchased_at:
+          type: string
+          format: date
+        storage_type:
+          type: string
+          enum: [refrigerated, frozen, room]
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+    VisionAnalyzeRequest:
+      type: object
+      required: [image_base64]
+      properties:
+        user_id:
+          type: string
+          nullable: true
+        session_id:
+          type: string
+          nullable: true
+        image_base64:
+          type: string
+          description: Raw base64 image string or data URL (`data:image/...;base64,...`)
+        mime_type:
+          type: string
+          nullable: true
+        text_hint:
+          type: string
+          nullable: true
+        source_type:
+          type: string
+          enum: [vision, text, voice]
+          default: vision
+        auto_apply_to_session:
+          type: boolean
+          default: true
+        segmentation_mode:
+          type: string
+          enum: [auto, none, sam3_http]
+          default: auto
+    VisionModelMeta:
+      type: object
+      properties:
+        provider:
+          type: string
+        name:
+          type: string
+        endpoint:
+          type: string
+    VisionSegmentationMeta:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [auto, none, sam3_http]
+        provider:
+          type: string
+          example: sam3_http
+        segment_count:
+          type: integer
+        original_segment_count:
+          type: integer
+        truncated:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+    VisionSegmentLabel:
+      type: object
+      properties:
+        segment_id:
+          type: string
+        ingredient_name:
+          type: string
+        confidence:
+          type: number
+    VisionAnalyzeVisionPayload:
+      type: object
+      properties:
+        detected_items:
+          type: array
+          items:
+            type: string
+        detected_count:
+          type: integer
+        segment_labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisionSegmentLabel"
+        segmentation:
+          $ref: "#/components/schemas/VisionSegmentationMeta"
+        model:
+          $ref: "#/components/schemas/VisionModelMeta"
+    VisionAnalyzeResult:
+      type: object
+      properties:
+        detected_items:
+          type: array
+          items:
+            type: string
+        detected_count:
+          type: integer
+        vision:
+          $ref: "#/components/schemas/VisionAnalyzeVisionPayload"
+        applied_to_session:
+          type: boolean
+        session_id:
+          type: string
+          nullable: true
+        capture:
+          $ref: "#/components/schemas/CaptureView"
+          nullable: true
+        turn:
+          $ref: "#/components/schemas/CaptureTurn"
+          nullable: true
+        review_queue_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientReviewQueueItem"
+        review_queue_count:
+          type: integer
+        message:
+          type: string
+          nullable: true
+    CaptureDraftItem:
+      type: object
+      properties:
+        ingredient_key:
+          type: string
+        ingredient_name:
+          type: string
+        quantity:
+          type: number
+        unit:
+          type: string
+        source:
+          type: string
+        confidence:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    CaptureTurn:
+      type: object
+      properties:
+        id:
+          type: string
+        source_type:
+          type: string
+        text:
+          type: string
+          nullable: true
+        vision_detected_items:
+          type: array
+          items:
+            type: string
+        parsed_commands:
+          type: array
+          items:
+            type: object
+        parsed_command_count:
+          type: integer
+        parsed_review_candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientReviewCandidate"
+        parsed_review_candidate_count:
+          type: integer
+        review_queue_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientReviewQueueItem"
+        review_queue_item_count:
+          type: integer
+        finalize_requested:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    CaptureSession:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        status:
+          type: string
+          enum: [open, finalized]
+        draft_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaptureDraftItem"
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaptureTurn"
+        pending_review_item_ids:
+          type: array
+          items:
+            type: string
+        created_inventory_item_ids:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        finalized_at:
+          type: string
+          format: date-time
+          nullable: true
+    CaptureSummary:
+      type: object
+      properties:
+        item_count:
+          type: integer
+        total_quantity:
+          type: number
+    CaptureView:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/CaptureSession"
+        summary:
+          $ref: "#/components/schemas/CaptureSummary"
+        review_queue_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientReviewQueueItem"
+        review_queue_count:
+          type: integer
+    IngredientCatalogEntry:
+      type: object
+      properties:
+        ingredient_key:
+          type: string
+        display_name:
+          type: string
+        ingredient_name:
+          type: string
+          nullable: true
+        matched_alias:
+          type: string
+          nullable: true
+        score:
+          type: number
+          nullable: true
+    IngredientReviewCandidate:
+      type: object
+      properties:
+        phrase:
+          type: string
+        reason:
+          type: string
+          enum: [needs_confirmation, unknown]
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientCatalogEntry"
+    IngredientReviewQueueItem:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        session_id:
+          type: string
+          nullable: true
+        turn_id:
+          type: string
+          nullable: true
+        phrase:
+          type: string
+        normalized_phrase:
+          type: string
+        reason:
+          type: string
+          enum: [needs_confirmation, unknown]
+        candidate_options:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientCatalogEntry"
+        seen_count:
+          type: integer
+        status:
+          type: string
+          enum: [pending, mapped, ignored]
+        resolved_action:
+          type: string
+          enum: [map, ignore]
+          nullable: true
+        resolved_by_user_id:
+          type: string
+          nullable: true
+        resolved_ingredient_key:
+          type: string
+          nullable: true
+        resolved_display_name:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+    ExpirationSuggestRequest:
+      type: object
+      required: [ingredient_name, purchased_at]
+      properties:
+        ingredient_name:
+          type: string
+          example: milk
+        purchased_at:
+          type: string
+          format: date
+        storage_type:
+          type: string
+          enum: [refrigerated, frozen, room]
+          default: refrigerated
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        ocr_expiration_date:
+          type: string
+          format: date
+          nullable: true
+        product_shelf_life_days:
+          type: integer
+          minimum: 1
+          nullable: true
+    ExpirationSuggestResult:
+      type: object
+      properties:
+        ingredient_name_input:
+          type: string
+        ingredient_key:
+          type: string
+          nullable: true
+        storage_type:
+          type: string
+        condition_type:
+          type: string
+          enum: [unopened, opened]
+        purchased_at:
+          type: string
+          format: date
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        reference_date:
+          type: string
+          format: date
+        suggested_expiration_date:
+          type: string
+          format: date
+        range_min_date:
+          type: string
+          format: date
+          nullable: true
+        range_max_date:
+          type: string
+          format: date
+          nullable: true
+        expiration_source:
+          type: string
+          enum: [ocr, product_profile, average_rule]
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        status:
+          type: string
+          enum: [fresh, expiring_soon, expired]
+        days_remaining:
+          type: integer
+        rule_source:
+          type: string
+          nullable: true
+    ExpirationSuggestResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ExpirationSuggestResult"
+        meta:
+          type: object
+          properties:
+            calculated_at:
+              type: string
+              format: date-time
+    OcrParseResult:
+      type: object
+      properties:
+        id:
+          type: string
+        raw_text:
+          type: string
+        parsed_expiration_date:
+          type: string
+          format: date
+          nullable: true
+        parser_confidence:
+          type: string
+          enum: [high, medium, none]
+        matched_pattern:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    InventoryCreateRequest:
+      type: object
+      required: [ingredient_name, purchased_at]
+      properties:
+        user_id:
+          type: string
+        ingredient_name:
+          type: string
+        purchased_at:
+          type: string
+          format: date
+        storage_type:
+          type: string
+          enum: [refrigerated, frozen, room]
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        ocr_expiration_date:
+          type: string
+          format: date
+          nullable: true
+        ocr_raw_text:
+          type: string
+          nullable: true
+        product_shelf_life_days:
+          type: integer
+          nullable: true
+        quantity:
+          type: number
+        unit:
+          type: string
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        ingredient_name:
+          type: string
+        ingredient_key:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unit:
+          type: string
+        storage_type:
+          type: string
+        purchased_at:
+          type: string
+          format: date
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        ocr_expiration_date:
+          type: string
+          format: date
+          nullable: true
+        product_shelf_life_days:
+          type: integer
+          nullable: true
+        suggested_expiration_date:
+          type: string
+          format: date
+        range_min_date:
+          type: string
+          format: date
+          nullable: true
+        range_max_date:
+          type: string
+          format: date
+          nullable: true
+        expiration_source:
+          type: string
+          enum: [ocr, product_profile, average_rule]
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        status:
+          type: string
+          enum: [fresh, expiring_soon, expired]
+        days_remaining:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        inventory_item_id:
+          type: string
+        notify_type:
+          type: string
+          enum: [d_minus_3, d_minus_1, d_day]
+        scheduled_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [pending, sent, failed]
+        created_at:
+          type: string
+          format: date-time
+    RecipeRecommendation:
+      type: object
+      properties:
+        recipe_id:
+          type: string
+        recipe_name:
+          type: string
+        chef:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        required_ingredient_keys:
+          type: array
+          items:
+            type: string
+        optional_ingredient_keys:
+          type: array
+          items:
+            type: string
+        matched_ingredient_keys:
+          type: array
+          items:
+            type: string
+        missing_ingredient_keys:
+          type: array
+          items:
+            type: string
+        can_make_now:
+          type: boolean
+        expiring_soon_used_count:
+          type: integer
+        match_ratio:
+          type: number
+        score:
+          type: number
+    ShoppingSuggestion:
+      type: object
+      properties:
+        ingredient_key:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [expired_replace, low_stock, essential_missing, recipe_missing]
+        priority:
+          type: integer
+        related_recipe_ids:
+          type: array
+          items:
+            type: string

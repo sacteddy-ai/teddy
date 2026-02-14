@@ -1,0 +1,11 @@
+{
+  "version": "2026-02-13",
+  "essential_ingredient_keys": [
+    "egg",
+    "milk",
+    "onion",
+    "green_onion",
+    "kimchi"
+  ],
+  "low_stock_threshold_default": 1
+}

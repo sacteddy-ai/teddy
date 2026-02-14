@@ -1,0 +1,22 @@
+# Runtime data
+storage/*
+!storage/.gitkeep
+
+# Local scratch / debug
+tmp_openai_payload.json
+
+# Env/secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Tooling (optional)
+node_modules/
+.wrangler/
+dist/

@@ -1,0 +1,56 @@
+{
+  "version": "2026-02-13",
+  "providers": [
+    {
+      "provider": "openfoodfacts",
+      "items": [
+        {
+          "ingredient_key": "sweet_potato",
+          "display_name": "Sweet Potato",
+          "openfoodfacts_tags": [
+            "en:sweet-potato",
+            "en:organic-sweet-potato",
+            "en:purple-sweet-potato",
+            "en:yam"
+          ]
+        },
+        {
+          "ingredient_key": "kimchi",
+          "display_name": "Kimchi",
+          "openfoodfacts_tags": [
+            "en:kimchi"
+          ]
+        },
+        {
+          "ingredient_key": "okra",
+          "display_name": "Okra",
+          "openfoodfacts_tags": [
+            "en:okra"
+          ]
+        },
+        {
+          "ingredient_key": "cassava",
+          "display_name": "Cassava",
+          "openfoodfacts_tags": [
+            "en:cassava"
+          ]
+        },
+        {
+          "ingredient_key": "aubergine",
+          "display_name": "Eggplant",
+          "openfoodfacts_tags": [
+            "en:aubergine"
+          ]
+        },
+        {
+          "ingredient_key": "cilantro",
+          "display_name": "Cilantro",
+          "openfoodfacts_tags": [
+            "en:coriander",
+            "en:coriander-leaf"
+          ]
+        }
+      ]
+    }
+  ]
+}

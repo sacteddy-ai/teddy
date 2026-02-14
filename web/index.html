@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teddy Fridge Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="background-blobs" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+  </div>
+
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Teddy MVP</p>
+      <h1>Fridge Control Board</h1>
+      <p class="subtitle">Track ingredients, expiration risk, recipe options, and shopping actions in one place.</p>
+      <div id="globalError" class="error-banner" hidden></div>
+      <div class="controls">
+        <label for="userId">User ID</label>
+        <input id="userId" type="text" value="demo-user">
+        <button id="refreshAllBtn" class="btn" type="button">Refresh All</button>
+        <button id="reloadCatalogBtn" class="btn ghost" type="button">Reload Catalog</button>
+        <span id="reloadCatalogResult" class="muted"></span>
+      </div>
+
+      <details class="api-details">
+        <summary>Remote API (optional)</summary>
+        <div class="form">
+          <div class="inline-fields">
+            <label>
+              API Base URL
+              <input id="apiBaseUrl" type="text" placeholder="https://xxxx.trycloudflare.com">
+            </label>
+            <label>
+              &nbsp;
+              <button id="saveApiBaseBtn" class="btn ghost" type="button">Save</button>
+            </label>
+          </div>
+          <div class="inline-actions">
+            <button id="clearApiBaseBtn" class="btn ghost" type="button">Use Same Origin</button>
+          </div>
+          <p class="muted">Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.</p>
+        </div>
+      </details>
+    </header>
+
+    <section class="grid stats-grid">
+      <article class="card stat">
+        <h2>Total</h2>
+        <p id="statTotal" class="stat-value">0</p>
+      </article>
+      <article class="card stat">
+        <h2>Fresh</h2>
+        <p id="statFresh" class="stat-value">0</p>
+      </article>
+      <article class="card stat">
+        <h2>Expiring Soon</h2>
+        <p id="statExpiring" class="stat-value">0</p>
+      </article>
+      <article class="card stat">
+        <h2>Expired</h2>
+        <p id="statExpired" class="stat-value">0</p>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>Add Inventory Item</h2>
+        <form id="createItemForm" class="form">
+          <label>
+            Ingredient
+            <input name="ingredient_name" placeholder="milk" required>
+          </label>
+          <label>
+            Purchased Date
+            <input name="purchased_at" type="date" required>
+          </label>
+          <label>
+            Storage Type
+            <select name="storage_type">
+              <option value="refrigerated">refrigerated</option>
+              <option value="frozen">frozen</option>
+              <option value="room">room</option>
+            </select>
+          </label>
+          <div class="inline-fields">
+            <label>
+              Quantity
+              <input name="quantity" type="number" min="0.01" step="0.01" value="1">
+            </label>
+            <label>
+              Unit
+              <input name="unit" value="ea">
+            </label>
+          </div>
+          <label>
+            OCR Raw Text (optional)
+            <input name="ocr_raw_text" placeholder="BEST BEFORE 2026-03-20">
+          </label>
+          <label>
+            Product Shelf-Life Days (optional)
+            <input name="product_shelf_life_days" type="number" min="1">
+          </label>
+          <button type="submit" class="btn">Save Item</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <h2>Notification Runner</h2>
+        <p>Send all due notifications up to now.</p>
+        <button id="runDueBtn" class="btn secondary" type="button">Run Due Notifications</button>
+        <div id="runDueResult" class="muted"></div>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>Conversational Capture</h2>
+        <div class="form">
+          <div class="inline-fields">
+            <label>
+              Session ID
+              <input id="captureSessionId" type="text" readonly placeholder="Start a session">
+            </label>
+            <label>
+              &nbsp;
+              <button id="startCaptureSessionBtn" class="btn" type="button">Start Session</button>
+            </label>
+          </div>
+          <label>
+            Voice/Text Message
+            <textarea id="captureMessageInput" rows="3" placeholder="This is tofu. This is kimchi. This is bacon. This is egg."></textarea>
+          </label>
+          <label>
+            Vision Items (comma separated, optional)
+            <input id="captureVisionItemsInput" type="text" placeholder="tofu, kimchi">
+          </label>
+          <div class="inline-fields">
+            <label>
+              Vision Image (optional)
+              <input id="captureVisionImageInput" type="file" accept="image/*" capture="environment">
+            </label>
+            <label>
+              Segmentation
+              <select id="captureSegmentationMode">
+                <option value="auto" selected>auto (SAM3 if configured)</option>
+                <option value="none">none (full image)</option>
+                <option value="sam3_http">sam3_http (require endpoint)</option>
+              </select>
+            </label>
+          </div>
+          <div class="inline-actions">
+            <button id="analyzeVisionImageBtn" class="btn ghost" type="button">Analyze Image</button>
+          </div>
+          <div id="visionAnalyzeMeta" class="muted"></div>
+          <details class="camera-details">
+            <summary>Live Camera (experimental)</summary>
+            <div class="camera-panel">
+              <video id="liveCameraVideo" class="camera-video" autoplay playsinline muted></video>
+              <div class="inline-actions">
+                <button id="startCameraBtn" class="btn ghost" type="button">Start Camera</button>
+                <button id="stopCameraBtn" class="btn ghost" type="button">Stop Camera</button>
+                <button id="captureFrameBtn" class="btn ghost" type="button">Capture Frame</button>
+              </div>
+              <div class="inline-fields camera-fields">
+                <label>
+                  Facing
+                  <select id="cameraFacingMode">
+                    <option value="environment" selected>back</option>
+                    <option value="user">front</option>
+                  </select>
+                </label>
+                <label>
+                  Auto Capture
+                  <select id="cameraAutoInterval">
+                    <option value="0" selected>off</option>
+                    <option value="1500">1.5s</option>
+                    <option value="2000">2s</option>
+                    <option value="3000">3s</option>
+                    <option value="5000">5s</option>
+                  </select>
+                </label>
+              </div>
+              <div id="cameraStatus" class="muted"></div>
+            </div>
+          </details>
+          <div class="inline-actions">
+            <button id="sendCaptureMessageBtn" class="btn" type="button">Send Message</button>
+            <button id="finalizeCaptureBtn" class="btn secondary" type="button">Finalize To Inventory</button>
+          </div>
+          <div id="captureError" class="error-inline" hidden></div>
+          <div id="captureMeta" class="muted"></div>
+        </div>
+      </article>
+      <article class="card">
+        <h2>Capture Draft</h2>
+        <div id="captureDraftList" class="list"></div>
+        <h3 class="subhead">Pending Confirmations (Session)</h3>
+        <div id="captureReviewList" class="list"></div>
+      </article>
+    </section>
+
+    <section class="grid one-col">
+      <article class="card">
+        <div class="section-head">
+          <h2>Ingredient Review Queue</h2>
+          <button id="reloadReviewQueueBtn" class="btn ghost" type="button">Reload</button>
+        </div>
+        <p class="muted">Unknown or low-confidence ingredients appear here. Confirm once and the parser learns it.</p>
+        <div id="reviewQueueList" class="list"></div>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <div class="section-head">
+          <h2>Inventory</h2>
+          <button id="reloadInventoryBtn" class="btn ghost" type="button">Reload</button>
+        </div>
+        <div id="inventoryList" class="list"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <h2>Recipe Recommendations</h2>
+          <button id="reloadRecipesBtn" class="btn ghost" type="button">Reload</button>
+        </div>
+        <div id="recipeList" class="list"></div>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <div class="section-head">
+          <h2>Shopping Suggestions</h2>
+          <button id="reloadShoppingBtn" class="btn ghost" type="button">Reload</button>
+        </div>
+        <div id="shoppingList" class="list"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <h2>Notifications</h2>
+          <button id="reloadNotificationsBtn" class="btn ghost" type="button">Reload</button>
+        </div>
+        <div id="notificationList" class="list"></div>
+      </article>
+    </section>
+  </main>
+
+  <template id="inventoryItemTemplate">
+    <div class="item inventory-item">
+      <div class="item-main">
+        <strong class="name"></strong>
+        <span class="meta"></span>
+      </div>
+      <div class="item-side">
+        <span class="badge"></span>
+        <button class="btn tiny consume-btn">Consume 1</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
