@@ -62,18 +62,11 @@ export async function onRequest(context) {
       type: "realtime",
       model,
       instructions,
-      voice,
-      turn_detection: { type: "server_vad" },
-      input_audio_transcription: transcriptionModel
-        ? {
-            model: transcriptionModel,
-            language: transcriptionLanguage || undefined
-          }
-        : undefined,
       audio: {
         input: {
           // Helps for phone mic in near-field situations.
           noise_reduction: { type: "near_field" },
+          turn_detection: { type: "server_vad" },
           transcription: transcriptionModel
             ? {
                 model: transcriptionModel,
