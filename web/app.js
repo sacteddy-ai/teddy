@@ -12,6 +12,8 @@ let realtimeAssistantTranscriptDelta = "";
 let realtimeLastSharedImageKey = "";
 let realtimeLastSharedImageAt = 0;
 let realtimeIngestChain = Promise.resolve();
+let realtimeLastIngestedText = "";
+let realtimeLastIngestedAt = 0;
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
 const LANG_STORAGE_KEY = "teddy_lang";
@@ -142,6 +144,17 @@ const I18N = {
     camera_tip_https: "Tip: mobile camera preview usually requires HTTPS. Photo upload still works.",
     camera_idle: "Camera idle.",
     voice_idle: "Voice idle.",
+    voice_starting: "Starting voice session...",
+    voice_ready: "Ready. Speak now.",
+    voice_connected: "Voice session connected.",
+    voice_connection_state: "Voice connection: {state}",
+    voice_listening: "Listening...",
+    voice_heard: "Heard: {text}",
+    voice_start_failed: "Voice start failed: {msg}",
+    voice_stopped: "Voice session stopped.",
+    voice_error_prefix: "Error: {msg}",
+    voice_draft_updated: "Draft updated from speech.",
+    voice_draft_update_failed: "Draft update failed: {msg}",
     meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
     meta_inventory_line: "{qty} {unit} | {storage} | exp {exp} | D{days}",
     meta_recipe_line: "{chef} | score {score} | match {match}%",
@@ -266,6 +279,17 @@ const I18N = {
     camera_tip_https: "팁: 휴대폰에서 카메라 미리보기는 보통 HTTPS가 필요합니다. 사진 업로드는 동작합니다.",
     camera_idle: "카메라 대기 중.",
     voice_idle: "음성 대기 중.",
+    voice_starting: "음성 연결 중...",
+    voice_ready: "준비 됨. 말해보세요.",
+    voice_connected: "음성 연결됨.",
+    voice_connection_state: "음성 연결 상태: {state}",
+    voice_listening: "듣는 중...",
+    voice_heard: "인식: {text}",
+    voice_start_failed: "음성 시작 실패: {msg}",
+    voice_stopped: "음성 세션 종료됨.",
+    voice_error_prefix: "오류: {msg}",
+    voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
+    voice_draft_update_failed: "드래프트 반영 실패: {msg}",
     meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
     meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
     meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
@@ -608,11 +632,15 @@ function setCameraStatus(message) {
 }
 
 function setRealtimeStatus(message) {
+  const msg = message || "";
   const el = $("realtimeStatus");
-  if (!el) {
-    return;
+  if (el) {
+    el.textContent = msg;
   }
-  el.textContent = message || "";
+  const quick = $("quickTalkStatus");
+  if (quick) {
+    quick.textContent = msg;
+  }
 }
 
 function updateQuickTalkButton() {
@@ -1603,7 +1631,7 @@ function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
 
 async function startRealtimeVoice() {
   if (isRealtimeConnected()) {
-    setRealtimeStatus("Voice session already running.");
+    setRealtimeStatus(t("voice_ready"));
     updateQuickTalkButton();
     return;
   }
@@ -1615,7 +1643,7 @@ async function startRealtimeVoice() {
   }
 
   clearRealtimeLog();
-  setRealtimeStatus("Starting voice session...");
+  setRealtimeStatus(t("voice_starting"));
   try {
     const secret = await fetchRealtimeClientSecret();
 
@@ -1637,7 +1665,7 @@ async function startRealtimeVoice() {
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState || "unknown";
-      setRealtimeStatus(`Voice connection: ${state}`);
+      setRealtimeStatus(tf("voice_connection_state", { state }));
       if (state === "failed" || state === "closed" || state === "disconnected") {
         // auto-cleanup
         stopRealtimeVoice();
@@ -1649,11 +1677,34 @@ async function startRealtimeVoice() {
 
     dc.addEventListener("open", () => {
       appendRealtimeLogLine("system", "Voice data channel open.");
-      setRealtimeStatus("Voice session ready.");
+      setRealtimeStatus(t("voice_ready"));
       const stopBtn = $("stopRealtimeBtn");
       const startBtn = $("startRealtimeBtn");
       if (stopBtn) stopBtn.disabled = false;
       if (startBtn) startBtn.disabled = true;
+      updateQuickTalkButton();
+
+      // Ensure transcription + VAD are enabled even if the token session config is minimal.
+      try {
+        const lang = currentLang === "ko" ? "ko" : "en";
+        realtimeSendEvent({
+          type: "session.update",
+          session: {
+            audio: {
+              input: {
+                noise_reduction: { type: "near_field" },
+                transcription: {
+                  model: "whisper-1",
+                  language: lang
+                },
+                turn_detection: { type: "server_vad" }
+              }
+            }
+          }
+        });
+      } catch {
+        // best-effort only
+      }
     });
 
     dc.addEventListener("message", (event) => {
@@ -1704,12 +1755,12 @@ async function startRealtimeVoice() {
     }
 
     await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-    setRealtimeStatus("Voice session connected.");
+    setRealtimeStatus(t("voice_connected"));
     updateQuickTalkButton();
   } catch (err) {
     stopRealtimeVoice();
     const msg = err?.message || String(err);
-    setRealtimeStatus(`Voice start failed: ${msg}`);
+    setRealtimeStatus(tf("voice_start_failed", { msg }));
     throw err;
   }
 }
@@ -1750,7 +1801,9 @@ function stopRealtimeVoice() {
   realtimeLastSharedImageKey = "";
   realtimeLastSharedImageAt = 0;
   realtimeIngestChain = Promise.resolve();
-  setRealtimeStatus("Voice session stopped.");
+  realtimeLastIngestedText = "";
+  realtimeLastIngestedAt = 0;
+  setRealtimeStatus(t("voice_stopped"));
   updateQuickTalkButton();
 }
 
@@ -1782,26 +1835,46 @@ function handleRealtimeEvent(evt) {
   if (type === "error") {
     const msg = evt?.error?.message || evt?.message || "Unknown realtime error.";
     appendRealtimeLogLine("error", msg);
-    setRealtimeStatus(`Error: ${msg}`);
+    setRealtimeStatus(tf("voice_error_prefix", { msg }));
     return;
   }
 
   // User speech transcription.
   if (type.includes("input_audio_transcription")) {
     const delta = typeof evt?.delta === "string" ? evt.delta : "";
-    const transcript = typeof evt?.transcript === "string" ? evt.transcript : "";
+    let transcript = typeof evt?.transcript === "string" ? evt.transcript : "";
+    if (!transcript && evt?.item?.content) {
+      const parts = Array.isArray(evt.item.content) ? evt.item.content : [];
+      const joined = parts
+        .map((p) => (p && typeof p.transcript === "string" ? p.transcript.trim() : ""))
+        .filter((v) => v.length > 0)
+        .join(" ");
+      transcript = joined;
+    }
 
     if (delta) {
       realtimeUserTranscriptDelta = `${realtimeUserTranscriptDelta}${delta}`;
-      setRealtimeStatus("Listening...");
+      setRealtimeStatus(t("voice_listening"));
       return;
     }
 
-    const finalText = transcript.trim() || realtimeUserTranscriptDelta.trim();
+    const finalText = String(transcript || realtimeUserTranscriptDelta || "").trim();
     if (finalText) {
-      appendRealtimeLogLine("me", finalText);
       realtimeUserTranscriptDelta = "";
-      if ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked) {
+
+      const now = Date.now();
+      if (finalText === realtimeLastIngestedText && now - realtimeLastIngestedAt < 4500) {
+        return;
+      }
+      realtimeLastIngestedText = finalText;
+      realtimeLastIngestedAt = now;
+
+      setRealtimeStatus(tf("voice_heard", { text: finalText }));
+      appendRealtimeLogLine("me", finalText);
+
+      const autoIngest =
+        isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
+      if (autoIngest) {
         // Queue capture updates so fast speech doesn't drop messages.
         realtimeIngestChain = realtimeIngestChain
           .then(() =>
@@ -1812,10 +1885,13 @@ function handleRealtimeEvent(evt) {
             })
           )
           .then(() => {
-            appendRealtimeLogLine("system", "Draft updated from speech.");
+            appendRealtimeLogLine("system", t("voice_draft_updated"));
           })
           .catch((err) => {
-            appendRealtimeLogLine("system", `Draft update failed: ${err?.message || "unknown error"}`);
+            appendRealtimeLogLine(
+              "system",
+              tf("voice_draft_update_failed", { msg: err?.message || "unknown error" })
+            );
           });
       }
     }
@@ -1836,6 +1912,48 @@ function handleRealtimeEvent(evt) {
     if (finalText) {
       appendRealtimeLogLine("agent", finalText);
       realtimeAssistantTranscriptDelta = "";
+    }
+    return;
+  }
+
+  // Some variants send the final user transcript as a conversation item.
+  if (type === "conversation.item.done" && evt?.item?.role === "user") {
+    const parts = Array.isArray(evt.item?.content) ? evt.item.content : [];
+    const transcriptParts = parts
+      .map((p) => (p && typeof p.transcript === "string" ? p.transcript.trim() : ""))
+      .filter((v) => v.length > 0);
+    const finalText = transcriptParts.join(" ").trim();
+    if (finalText) {
+      const now = Date.now();
+      if (finalText !== realtimeLastIngestedText || now - realtimeLastIngestedAt >= 4500) {
+        realtimeLastIngestedText = finalText;
+        realtimeLastIngestedAt = now;
+
+        setRealtimeStatus(tf("voice_heard", { text: finalText }));
+        appendRealtimeLogLine("me", finalText);
+
+        const autoIngest =
+          isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
+        if (autoIngest) {
+          realtimeIngestChain = realtimeIngestChain
+            .then(() =>
+              sendCaptureMessagePayload({
+                source_type: "realtime_voice",
+                text: finalText,
+                vision_detected_items: []
+              })
+            )
+            .then(() => {
+              appendRealtimeLogLine("system", t("voice_draft_updated"));
+            })
+            .catch((err) => {
+              appendRealtimeLogLine(
+                "system",
+                tf("voice_draft_update_failed", { msg: err?.message || "unknown error" })
+              );
+            });
+        }
+      }
     }
     return;
   }
