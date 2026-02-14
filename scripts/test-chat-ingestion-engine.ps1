@@ -121,6 +121,13 @@ function Run-Tests {
   Assert-True -Condition (@($koreanReviewPhrases | Where-Object { $_ -match (([char]0xC774).ToString()+([char]0xACE0)) -or $_ -match (([char]0xC774).ToString()+([char]0xAC70)+([char]0xB294)) -or $_ -match (([char]0xC774).ToString()+([char]0xC57C)) }).Count -eq 0) -Message "Korean review phrases should not include connector/pronoun particles"
   Assert-True -Condition (@($koreanReviewPhrases | Where-Object { $_ -match " " }).Count -eq 0) -Message "Korean review phrases should not merge separate ingredient nouns"
 
+  $sideWordsText = ([char]0xB9E8).ToString()+' '+([char]0xCC98)+([char]0xC74C)+([char]0xBD80)+([char]0xD130)+' '+([char]0xC67C)+([char]0xCABD)+([char]0xC740)+' '+([char]0xB450)+([char]0xBD80)+([char]0xACE0)+' '+([char]0xADF8)+' '+([char]0xC606)+([char]0xC740)+' '+([char]0xACC4)+([char]0xB780)+([char]0xC774)+([char]0xACE0)+' '+([char]0xADF8)+' '+([char]0xC606)+([char]0xC740)+' '+([char]0xD1A0)+([char]0xB9C8)+([char]0xD1A0)+([char]0xCE58)+([char]0xD0A8)+([char]0xC774)+([char]0xC57C)
+  $sideWordsParsed = Parse-ConversationCommands -Text $sideWordsText
+  $sideWordsPhrases = @($sideWordsParsed.review_candidates | ForEach-Object { $_.phrase })
+  Assert-True -Condition (@($sideWordsPhrases | Where-Object { $_ -eq (([char]0xC606).ToString()+([char]0xC740)) -or $_ -eq (([char]0xC606).ToString()) }).Count -eq 0) -Message "Spatial particle '옆은' should not become a pending phrase"
+  Assert-True -Condition (@($sideWordsPhrases | Where-Object { $_ -eq (([char]0xCC98).ToString()+([char]0xC74C)) }).Count -eq 0) -Message "Positional word '처음' should not become a pending phrase"
+  Assert-True -Condition (@($sideWordsPhrases | Where-Object { $_ -eq (([char]0xB9E8).ToString()) -or $_ -eq (([char]0xB9E8).ToString()+([char]0xCC98)+([char]0xC74C)) }).Count -eq 0) -Message "Positional word '맨/맨처음' should not become a pending phrase"
+
   $summary = Get-DraftSummary -DraftItems $visionDraft
   Assert-True -Condition ($summary.item_count -ge 3) -Message "Draft summary should have item count"
 

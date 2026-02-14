@@ -99,7 +99,8 @@ function Remove-KoreanParticleSuffix {
     $changed = $false
     foreach ($rawSuffix in $suffixes) {
       $suffix = Convert-UnicodeEscapeLiterals -Value $rawSuffix
-      if ($trimmed.EndsWith($suffix, [System.StringComparison]::Ordinal) -and $trimmed.Length -gt ($suffix.Length + 1)) {
+      # Allow stripping from short tokens like "옆은" -> "옆".
+      if ($trimmed.EndsWith($suffix, [System.StringComparison]::Ordinal) -and $trimmed.Length -gt $suffix.Length) {
         $trimmed = $trimmed.Substring(0, $trimmed.Length - $suffix.Length)
         $changed = $true
         break
@@ -127,7 +128,8 @@ function Get-DefaultStopwordMap {
     "\uC67C\uCABD", "\uC624\uB978\uCABD", "\uAC00\uC6B4\uB370", "\uC911\uAC04",
     "\uC704\uCABD", "\uC544\uB798\uCABD", "\uC55E\uCABD", "\uB4A4\uCABD",
     "\uC717\uCE78", "\uC544\uB7AB\uCE78", "\uCE78", "\uC120\uBC18", "\uC11C\uB78D",
-    "\uB0C9\uC7A5\uC2E4", "\uB0C9\uB3D9\uC2E4"
+    "\uB0C9\uC7A5\uC2E4", "\uB0C9\uB3D9\uC2E4",
+    "\uB9E8", "\uCC98\uC74C", "\uB9E8\uCC98\uC74C"
   )
 
   $map = @{}

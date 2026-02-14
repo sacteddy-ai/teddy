@@ -54,7 +54,8 @@ export function removeKoreanParticleSuffix(value) {
   for (let iter = 0; iter < 3; iter += 1) {
     let changed = false;
     for (const suffix of suffixes) {
-      if (trimmed.endsWith(suffix) && trimmed.length > suffix.length + 1) {
+      // Allow stripping from short tokens like "옆은" -> "옆".
+      if (trimmed.endsWith(suffix) && trimmed.length > suffix.length) {
         trimmed = trimmed.slice(0, -suffix.length);
         changed = true;
         break;
@@ -126,7 +127,10 @@ export function getDefaultStopwordMap() {
     "선반",
     "서랍",
     "냉장실",
-    "냉동실"
+    "냉동실",
+    "맨",
+    "처음",
+    "맨처음"
   ];
 
   const map = new Map();
