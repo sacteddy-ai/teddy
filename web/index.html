@@ -15,169 +15,174 @@
 
   <main class="page">
     <header class="hero">
-      <p class="eyebrow">Teddy MVP</p>
-      <h1>Fridge Control Board</h1>
-      <p class="subtitle">Track ingredients, expiration risk, recipe options, and shopping actions in one place.</p>
+      <p class="eyebrow" data-i18n="hero_eyebrow">Teddy MVP</p>
+      <h1 data-i18n="hero_title">Fridge Control Board</h1>
+      <p class="subtitle" data-i18n="hero_subtitle">Track ingredients, expiration risk, recipe options, and shopping actions in one place.</p>
       <div id="globalError" class="error-banner" hidden></div>
       <div class="controls">
-        <label for="userId">User ID</label>
+        <label for="userId" data-i18n="label_user_id">User ID</label>
         <input id="userId" type="text" value="demo-user">
-        <button id="refreshAllBtn" class="btn" type="button">Refresh All</button>
-        <button id="reloadCatalogBtn" class="btn ghost" type="button">Reload Catalog</button>
+        <label for="languageSelect" data-i18n="label_language">Language</label>
+        <select id="languageSelect">
+          <option value="en">English</option>
+          <option value="ko">한국어</option>
+        </select>
+        <button id="refreshAllBtn" class="btn" type="button" data-i18n="btn_refresh_all">Refresh All</button>
+        <button id="reloadCatalogBtn" class="btn ghost" type="button" data-i18n="btn_reload_catalog">Reload Catalog</button>
         <span id="reloadCatalogResult" class="muted"></span>
       </div>
 
       <details class="api-details">
-        <summary>Remote API (optional)</summary>
+        <summary data-i18n="remote_api_summary">Remote API (optional)</summary>
         <div class="form">
           <div class="inline-fields">
             <label>
-              API Base URL
+              <span data-i18n="label_api_base_url">API Base URL</span>
               <input id="apiBaseUrl" type="text" placeholder="https://xxxx.trycloudflare.com">
             </label>
             <label>
               &nbsp;
-              <button id="saveApiBaseBtn" class="btn ghost" type="button">Save</button>
+              <button id="saveApiBaseBtn" class="btn ghost" type="button" data-i18n="btn_save">Save</button>
             </label>
           </div>
           <div class="inline-actions">
-            <button id="clearApiBaseBtn" class="btn ghost" type="button">Use Same Origin</button>
+            <button id="clearApiBaseBtn" class="btn ghost" type="button" data-i18n="btn_use_same_origin">Use Same Origin</button>
           </div>
-          <p class="muted">Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.</p>
+          <p class="muted" data-i18n-html="remote_api_help_html">Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.</p>
         </div>
       </details>
     </header>
 
     <section class="grid stats-grid">
       <article class="card stat">
-        <h2>Total</h2>
+        <h2 data-i18n="stat_total">Total</h2>
         <p id="statTotal" class="stat-value">0</p>
       </article>
       <article class="card stat">
-        <h2>Fresh</h2>
+        <h2 data-i18n="stat_fresh">Fresh</h2>
         <p id="statFresh" class="stat-value">0</p>
       </article>
       <article class="card stat">
-        <h2>Expiring Soon</h2>
+        <h2 data-i18n="stat_expiring_soon">Expiring Soon</h2>
         <p id="statExpiring" class="stat-value">0</p>
       </article>
       <article class="card stat">
-        <h2>Expired</h2>
+        <h2 data-i18n="stat_expired">Expired</h2>
         <p id="statExpired" class="stat-value">0</p>
       </article>
     </section>
 
     <section class="grid two-col">
       <article class="card">
-        <h2>Add Inventory Item</h2>
+        <h2 data-i18n="add_item_title">Add Inventory Item</h2>
         <form id="createItemForm" class="form">
           <label>
-            Ingredient
-            <input name="ingredient_name" placeholder="milk" required>
+            <span data-i18n="label_ingredient">Ingredient</span>
+            <input name="ingredient_name" placeholder="milk" data-i18n-placeholder="ph_ingredient_example" required>
           </label>
           <label>
-            Purchased Date
+            <span data-i18n="label_purchased_date">Purchased Date</span>
             <input name="purchased_at" type="date" required>
           </label>
           <label>
-            Storage Type
+            <span data-i18n="label_storage_type">Storage Type</span>
             <select name="storage_type">
-              <option value="refrigerated">refrigerated</option>
-              <option value="frozen">frozen</option>
-              <option value="room">room</option>
+              <option value="refrigerated" data-i18n="storage_refrigerated">refrigerated</option>
+              <option value="frozen" data-i18n="storage_frozen">frozen</option>
+              <option value="room" data-i18n="storage_room">room</option>
             </select>
           </label>
           <div class="inline-fields">
             <label>
-              Quantity
+              <span data-i18n="label_quantity">Quantity</span>
               <input name="quantity" type="number" min="0.01" step="0.01" value="1">
             </label>
             <label>
-              Unit
+              <span data-i18n="label_unit">Unit</span>
               <input name="unit" value="ea">
             </label>
           </div>
           <label>
-            OCR Raw Text (optional)
-            <input name="ocr_raw_text" placeholder="BEST BEFORE 2026-03-20">
+            <span data-i18n="label_ocr_raw_text">OCR Raw Text (optional)</span>
+            <input name="ocr_raw_text" placeholder="BEST BEFORE 2026-03-20" data-i18n-placeholder="ph_ocr_example">
           </label>
           <label>
-            Product Shelf-Life Days (optional)
+            <span data-i18n="label_product_shelf_life_days">Product Shelf-Life Days (optional)</span>
             <input name="product_shelf_life_days" type="number" min="1">
           </label>
-          <button type="submit" class="btn">Save Item</button>
+          <button type="submit" class="btn" data-i18n="btn_save_item">Save Item</button>
         </form>
       </article>
 
       <article class="card">
-        <h2>Notification Runner</h2>
-        <p>Send all due notifications up to now.</p>
-        <button id="runDueBtn" class="btn secondary" type="button">Run Due Notifications</button>
+        <h2 data-i18n="notification_runner_title">Notification Runner</h2>
+        <p data-i18n="notification_runner_desc">Send all due notifications up to now.</p>
+        <button id="runDueBtn" class="btn secondary" type="button" data-i18n="btn_run_due_notifications">Run Due Notifications</button>
         <div id="runDueResult" class="muted"></div>
       </article>
     </section>
 
     <section class="grid two-col">
       <article class="card">
-        <h2>Conversational Capture</h2>
+        <h2 data-i18n="conversational_capture_title">Conversational Capture</h2>
         <div class="form">
           <div class="inline-fields">
             <label>
-              Session ID
-              <input id="captureSessionId" type="text" readonly placeholder="Start a session">
+              <span data-i18n="label_session_id">Session ID</span>
+              <input id="captureSessionId" type="text" readonly placeholder="Start a session" data-i18n-placeholder="ph_start_session">
             </label>
             <label>
               &nbsp;
-              <button id="startCaptureSessionBtn" class="btn" type="button">Start Session</button>
+              <button id="startCaptureSessionBtn" class="btn" type="button" data-i18n="btn_start_session">Start Session</button>
             </label>
           </div>
           <label>
-            Voice/Text Message
-            <textarea id="captureMessageInput" rows="3" placeholder="This is tofu. This is kimchi. This is bacon. This is egg."></textarea>
+            <span data-i18n="label_voice_text_message">Voice/Text Message</span>
+            <textarea id="captureMessageInput" rows="3" placeholder="This is tofu. This is kimchi. This is bacon. This is egg." data-i18n-placeholder="ph_capture_message_example"></textarea>
           </label>
           <label>
-            Vision Items (comma separated, optional)
-            <input id="captureVisionItemsInput" type="text" placeholder="tofu, kimchi">
+            <span data-i18n="label_vision_items">Vision Items (comma separated, optional)</span>
+            <input id="captureVisionItemsInput" type="text" placeholder="tofu, kimchi" data-i18n-placeholder="ph_vision_items_example">
           </label>
           <div class="inline-fields">
             <label>
-              Vision Image (optional)
+              <span data-i18n="label_vision_image">Vision Image (optional)</span>
               <input id="captureVisionImageInput" type="file" accept="image/*" capture="environment">
             </label>
             <label>
-              Segmentation
+              <span data-i18n="label_segmentation">Segmentation</span>
               <select id="captureSegmentationMode">
-                <option value="auto" selected>auto (SAM3 if configured)</option>
-                <option value="none">none (full image)</option>
-                <option value="sam3_http">sam3_http (require endpoint)</option>
+                <option value="auto" selected data-i18n="seg_auto">auto (SAM3 if configured)</option>
+                <option value="none" data-i18n="seg_none">none (full image)</option>
+                <option value="sam3_http" data-i18n="seg_sam3_http">sam3_http (require endpoint)</option>
               </select>
             </label>
           </div>
           <div class="inline-actions">
-            <button id="analyzeVisionImageBtn" class="btn ghost" type="button">Analyze Image</button>
+            <button id="analyzeVisionImageBtn" class="btn ghost" type="button" data-i18n="btn_analyze_image">Analyze Image</button>
           </div>
           <div id="visionAnalyzeMeta" class="muted"></div>
            <details class="camera-details">
-             <summary>Live Camera (experimental)</summary>
+             <summary data-i18n="live_camera_summary">Live Camera (experimental)</summary>
              <div class="camera-panel">
                <video id="liveCameraVideo" class="camera-video" autoplay playsinline muted></video>
                <div class="inline-actions">
-                 <button id="startCameraBtn" class="btn ghost" type="button">Start Camera</button>
-                 <button id="stopCameraBtn" class="btn ghost" type="button">Stop Camera</button>
-                 <button id="captureFrameBtn" class="btn ghost" type="button">Capture Frame</button>
+                 <button id="startCameraBtn" class="btn ghost" type="button" data-i18n="btn_start_camera">Start Camera</button>
+                 <button id="stopCameraBtn" class="btn ghost" type="button" data-i18n="btn_stop_camera">Stop Camera</button>
+                 <button id="captureFrameBtn" class="btn ghost" type="button" data-i18n="btn_capture_frame">Capture Frame</button>
                </div>
                <div class="inline-fields camera-fields">
                  <label>
-                   Facing
+                   <span data-i18n="label_facing">Facing</span>
                    <select id="cameraFacingMode">
-                     <option value="environment" selected>back</option>
-                     <option value="user">front</option>
+                     <option value="environment" selected data-i18n="facing_back">back</option>
+                     <option value="user" data-i18n="facing_front">front</option>
                    </select>
                  </label>
                  <label>
-                   Auto Capture
+                   <span data-i18n="label_auto_capture">Auto Capture</span>
                    <select id="cameraAutoInterval">
-                     <option value="0" selected>off</option>
+                     <option value="0" selected data-i18n="auto_off">off</option>
                      <option value="1500">1.5s</option>
                      <option value="2000">2s</option>
                      <option value="3000">3s</option>
@@ -189,28 +194,28 @@
              </div>
            </details>
            <details class="realtime-details">
-             <summary>Realtime Voice Agent (hybrid)</summary>
+             <summary data-i18n="realtime_summary">Realtime Voice Agent (hybrid)</summary>
              <div class="realtime-panel">
                <div class="inline-actions">
-                 <button id="startRealtimeBtn" class="btn ghost" type="button">Start Voice</button>
-                 <button id="stopRealtimeBtn" class="btn ghost" type="button" disabled>Stop Voice</button>
+                 <button id="startRealtimeBtn" class="btn ghost" type="button" data-i18n="btn_start_voice">Start Voice</button>
+                 <button id="stopRealtimeBtn" class="btn ghost" type="button" disabled data-i18n="btn_stop_voice">Stop Voice</button>
                </div>
                <div class="inline-fields realtime-fields">
                  <label class="checkline">
                    <input id="realtimeAutoIngestSpeech" type="checkbox" checked>
-                   Auto-add my speech to draft
+                   <span data-i18n="realtime_auto_ingest">Auto-add my speech to draft</span>
                  </label>
                  <label class="checkline">
                    <input id="realtimeShareVision" type="checkbox" checked>
-                   Share snapshots (images) to agent
+                   <span data-i18n="realtime_share_snapshots">Share snapshots (images) to agent</span>
                  </label>
                </div>
                <label>
-                 Send Text (optional)
-                 <input id="realtimeTextInput" type="text" placeholder="What can I cook with what you see?">
+                 <span data-i18n="label_send_text_optional">Send Text (optional)</span>
+                 <input id="realtimeTextInput" type="text" placeholder="What can I cook with what you see?" data-i18n-placeholder="ph_realtime_text_example">
                </label>
                <div class="inline-actions">
-                 <button id="sendRealtimeTextBtn" class="btn secondary tiny" type="button">Send To Agent</button>
+                 <button id="sendRealtimeTextBtn" class="btn secondary tiny" type="button" data-i18n="btn_send_to_agent">Send To Agent</button>
                </div>
                <audio id="realtimeAudio" autoplay></audio>
                <div id="realtimeStatus" class="muted"></div>
@@ -218,17 +223,17 @@
              </div>
            </details>
            <div class="inline-actions">
-             <button id="sendCaptureMessageBtn" class="btn" type="button">Send Message</button>
-             <button id="finalizeCaptureBtn" class="btn secondary" type="button">Finalize To Inventory</button>
+             <button id="sendCaptureMessageBtn" class="btn" type="button" data-i18n="btn_send_message">Send Message</button>
+             <button id="finalizeCaptureBtn" class="btn secondary" type="button" data-i18n="btn_finalize_to_inventory">Finalize To Inventory</button>
            </div>
           <div id="captureError" class="error-inline" hidden></div>
           <div id="captureMeta" class="muted"></div>
         </div>
       </article>
       <article class="card">
-        <h2>Capture Draft</h2>
+        <h2 data-i18n="capture_draft_title">Capture Draft</h2>
         <div id="captureDraftList" class="list"></div>
-        <h3 class="subhead">Pending Confirmations (Session)</h3>
+        <h3 class="subhead" data-i18n="pending_confirmations_title">Pending Confirmations (Session)</h3>
         <div id="captureReviewList" class="list"></div>
       </article>
     </section>
@@ -236,10 +241,10 @@
     <section class="grid one-col">
       <article class="card">
         <div class="section-head">
-          <h2>Ingredient Review Queue</h2>
-          <button id="reloadReviewQueueBtn" class="btn ghost" type="button">Reload</button>
+          <h2 data-i18n="ingredient_review_queue_title">Ingredient Review Queue</h2>
+          <button id="reloadReviewQueueBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
-        <p class="muted">Unknown or low-confidence ingredients appear here. Confirm once and the parser learns it.</p>
+        <p class="muted" data-i18n="review_queue_desc">Unknown or low-confidence ingredients appear here. Confirm once and the parser learns it.</p>
         <div id="reviewQueueList" class="list"></div>
       </article>
     </section>
@@ -247,16 +252,16 @@
     <section class="grid two-col">
       <article class="card">
         <div class="section-head">
-          <h2>Inventory</h2>
-          <button id="reloadInventoryBtn" class="btn ghost" type="button">Reload</button>
+          <h2 data-i18n="inventory_title">Inventory</h2>
+          <button id="reloadInventoryBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
         <div id="inventoryList" class="list"></div>
       </article>
 
       <article class="card">
         <div class="section-head">
-          <h2>Recipe Recommendations</h2>
-          <button id="reloadRecipesBtn" class="btn ghost" type="button">Reload</button>
+          <h2 data-i18n="recipes_title">Recipe Recommendations</h2>
+          <button id="reloadRecipesBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
         <div id="recipeList" class="list"></div>
       </article>
@@ -265,16 +270,16 @@
     <section class="grid two-col">
       <article class="card">
         <div class="section-head">
-          <h2>Shopping Suggestions</h2>
-          <button id="reloadShoppingBtn" class="btn ghost" type="button">Reload</button>
+          <h2 data-i18n="shopping_title">Shopping Suggestions</h2>
+          <button id="reloadShoppingBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
         <div id="shoppingList" class="list"></div>
       </article>
 
       <article class="card">
         <div class="section-head">
-          <h2>Notifications</h2>
-          <button id="reloadNotificationsBtn" class="btn ghost" type="button">Reload</button>
+          <h2 data-i18n="notifications_title">Notifications</h2>
+          <button id="reloadNotificationsBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
         <div id="notificationList" class="list"></div>
       </article>

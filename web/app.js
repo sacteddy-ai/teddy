@@ -14,6 +14,432 @@ let realtimeLastSharedImageAt = 0;
 let realtimeIngestChain = Promise.resolve();
 
 const API_BASE_STORAGE_KEY = "teddy_api_base";
+const LANG_STORAGE_KEY = "teddy_lang";
+
+let currentLang = "en";
+let ingredientLabelsUserId = "";
+let ingredientLabelsByKey = new Map();
+let ingredientLabelsLoadPromise = null;
+let ingredientLabelsLoadUserId = "";
+
+const I18N = {
+  en: {
+    doc_title: "Teddy Fridge Dashboard",
+    hero_eyebrow: "Teddy MVP",
+    hero_title: "Fridge Control Board",
+    hero_subtitle: "Track ingredients, expiration risk, recipe options, and shopping actions in one place.",
+    label_user_id: "User ID",
+    label_language: "Language",
+    btn_refresh_all: "Refresh All",
+    btn_reload_catalog: "Reload Catalog",
+    remote_api_summary: "Remote API (optional)",
+    label_api_base_url: "API Base URL",
+    btn_save: "Save",
+    btn_use_same_origin: "Use Same Origin",
+    remote_api_help_html:
+      "Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.",
+    word_none: "none",
+    stat_total: "Total",
+    stat_fresh: "Fresh",
+    stat_expiring_soon: "Expiring Soon",
+    stat_expired: "Expired",
+    add_item_title: "Add Inventory Item",
+    label_ingredient: "Ingredient",
+    ph_ingredient_example: "milk",
+    label_purchased_date: "Purchased Date",
+    label_storage_type: "Storage Type",
+    storage_refrigerated: "refrigerated",
+    storage_frozen: "frozen",
+    storage_room: "room",
+    label_quantity: "Quantity",
+    label_unit: "Unit",
+    label_ocr_raw_text: "OCR Raw Text (optional)",
+    ph_ocr_example: "BEST BEFORE 2026-03-20",
+    label_product_shelf_life_days: "Product Shelf-Life Days (optional)",
+    btn_save_item: "Save Item",
+    notification_runner_title: "Notification Runner",
+    notification_runner_desc: "Send all due notifications up to now.",
+    btn_run_due_notifications: "Run Due Notifications",
+    conversational_capture_title: "Conversational Capture",
+    label_session_id: "Session ID",
+    ph_start_session: "Start a session",
+    btn_start_session: "Start Session",
+    label_voice_text_message: "Voice/Text Message",
+    ph_capture_message_example: "This is tofu. This is kimchi. This is bacon. This is egg.",
+    label_vision_items: "Vision Items (comma separated, optional)",
+    ph_vision_items_example: "tofu, kimchi",
+    label_vision_image: "Vision Image (optional)",
+    label_segmentation: "Segmentation",
+    seg_auto: "auto (SAM3 if configured)",
+    seg_none: "none (full image)",
+    seg_sam3_http: "sam3_http (require endpoint)",
+    btn_analyze_image: "Analyze Image",
+    live_camera_summary: "Live Camera (experimental)",
+    btn_start_camera: "Start Camera",
+    btn_stop_camera: "Stop Camera",
+    btn_capture_frame: "Capture Frame",
+    label_facing: "Facing",
+    facing_back: "back",
+    facing_front: "front",
+    label_auto_capture: "Auto Capture",
+    auto_off: "off",
+    realtime_summary: "Realtime Voice Agent (hybrid)",
+    btn_start_voice: "Start Voice",
+    btn_stop_voice: "Stop Voice",
+    realtime_auto_ingest: "Auto-add my speech to draft",
+    realtime_share_snapshots: "Share snapshots (images) to agent",
+    label_send_text_optional: "Send Text (optional)",
+    ph_realtime_text_example: "What can I cook with what you see?",
+    btn_send_to_agent: "Send To Agent",
+    btn_send_message: "Send Message",
+    btn_finalize_to_inventory: "Finalize To Inventory",
+    capture_draft_title: "Capture Draft",
+    pending_confirmations_title: "Pending Confirmations (Session)",
+    ingredient_review_queue_title: "Ingredient Review Queue",
+    btn_reload: "Reload",
+    review_queue_desc: "Unknown or low-confidence ingredients appear here. Confirm once and the parser learns it.",
+    inventory_title: "Inventory",
+    recipes_title: "Recipe Recommendations",
+    shopping_title: "Shopping Suggestions",
+    notifications_title: "Notifications",
+    btn_consume_1: "Consume 1",
+    btn_map_prefix: "Map:",
+    btn_map_custom: "Map Custom",
+    btn_ignore: "Ignore",
+    label_ingredient_key: "ingredient_key",
+    label_display_name_optional: "display name (optional)",
+    err_missing_key_map: "ingredient_key is required to map this phrase.",
+    unknown_phrase: "(unknown phrase)",
+    review_meta_line: "reason: {reason} | seen: {seen}",
+    empty_inventory: "No inventory items yet.",
+    empty_recipes: "No recipe recommendations yet.",
+    empty_shopping: "No shopping suggestions.",
+    empty_notifications: "No notifications.",
+    empty_capture_none: "Start a capture session.",
+    empty_capture_no_session: "No active capture session.",
+    empty_capture_draft: "Draft is empty.",
+    empty_capture_review: "No pending confirmations in this session.",
+    empty_review_queue: "No pending review items.",
+    capture_error_need_text_or_vision: "Type a message or provide vision items.",
+    err_no_capture_session: "No capture session to finalize.",
+    capture_error_no_confirmed: "No confirmed ingredient yet. {count} phrase(s) need confirmation below.",
+    capture_error_none_detected:
+      "No ingredient was detected from this message. Add names explicitly or use Vision Items.",
+    capture_error_need_confirmation: "{count} phrase(s) still need confirmation below.",
+    vision_no_detected: "No ingredients were detected from this image.",
+    camera_tip_https: "Tip: mobile camera preview usually requires HTTPS. Photo upload still works.",
+    camera_idle: "Camera idle.",
+    voice_idle: "Voice idle.",
+    meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
+    meta_inventory_line: "{qty} {unit} | exp {exp} | D{days}",
+    meta_recipe_line: "{chef} | score {score} | match {match}%",
+    meta_recipe_missing: "missing: {missing}",
+    meta_shopping_reasons: "reasons: {reasons}",
+    meta_shopping_related: "related recipes: {related}",
+    meta_notification_item: "item: {id}",
+    meta_notification_scheduled: "scheduled: {ts}",
+    toast_run_due: "Sent {count} notification(s) at {ts}",
+    toast_reload_catalog: "Reloaded {count} cache(s) at {ts}",
+    badge_draft: "draft"
+  },
+  ko: {
+    doc_title: "Teddy 냉장고 대시보드",
+    hero_eyebrow: "Teddy MVP",
+    hero_title: "냉장고 컨트롤 보드",
+    hero_subtitle: "식재료, 유통기한, 레시피, 장보기까지 한 화면에서 관리하세요.",
+    label_user_id: "User ID",
+    label_language: "언어",
+    btn_refresh_all: "전체 새로고침",
+    btn_reload_catalog: "카탈로그 새로고침",
+    remote_api_summary: "원격 API (선택)",
+    label_api_base_url: "API Base URL",
+    btn_save: "저장",
+    btn_use_same_origin: "같은 도메인 사용",
+    remote_api_help_html:
+      "대시보드는 Pages에, API는 다른 곳(예: 터널)에 띄웠을 때 사용하세요. API 서버에서 CORS를 <code>ENABLE_CORS=1</code> 로 켜야 합니다.",
+    word_none: "없음",
+    stat_total: "전체",
+    stat_fresh: "신선",
+    stat_expiring_soon: "임박",
+    stat_expired: "만료",
+    add_item_title: "인벤토리 항목 추가",
+    label_ingredient: "식재료",
+    ph_ingredient_example: "우유",
+    label_purchased_date: "구매일",
+    label_storage_type: "보관 방식",
+    storage_refrigerated: "냉장",
+    storage_frozen: "냉동",
+    storage_room: "실온",
+    label_quantity: "수량",
+    label_unit: "단위",
+    label_ocr_raw_text: "OCR 원문 (선택)",
+    ph_ocr_example: "유통기한 2026-03-20",
+    label_product_shelf_life_days: "제품 유통기한(일) (선택)",
+    btn_save_item: "저장",
+    notification_runner_title: "알림 실행",
+    notification_runner_desc: "지금까지 도착해야 할 알림을 모두 발송합니다.",
+    btn_run_due_notifications: "알림 실행",
+    conversational_capture_title: "대화형 캡처",
+    label_session_id: "세션 ID",
+    ph_start_session: "세션 시작",
+    btn_start_session: "세션 시작",
+    label_voice_text_message: "음성/텍스트 메시지",
+    ph_capture_message_example: "왼쪽은 두부, 그 옆은 계란, 아래칸에는 피클과 오이가 있어.",
+    label_vision_items: "비전 아이템(쉼표 구분, 선택)",
+    ph_vision_items_example: "두부, 김치",
+    label_vision_image: "이미지(선택)",
+    label_segmentation: "세그멘테이션",
+    seg_auto: "자동 (설정 시 SAM3 사용)",
+    seg_none: "없음 (전체 이미지)",
+    seg_sam3_http: "sam3_http (엔드포인트 필요)",
+    btn_analyze_image: "이미지 분석",
+    live_camera_summary: "라이브 카메라 (실험)",
+    btn_start_camera: "카메라 시작",
+    btn_stop_camera: "카메라 중지",
+    btn_capture_frame: "프레임 캡처",
+    label_facing: "카메라",
+    facing_back: "후면",
+    facing_front: "전면",
+    label_auto_capture: "자동 캡처",
+    auto_off: "끔",
+    realtime_summary: "Realtime 음성 에이전트 (하이브리드)",
+    btn_start_voice: "음성 시작",
+    btn_stop_voice: "음성 중지",
+    realtime_auto_ingest: "내 음성을 자동으로 드래프트에 추가",
+    realtime_share_snapshots: "스냅샷(이미지)도 에이전트에게 공유",
+    label_send_text_optional: "텍스트 보내기 (선택)",
+    ph_realtime_text_example: "지금 있는 재료로 뭘 만들 수 있어?",
+    btn_send_to_agent: "에이전트에게 전송",
+    btn_send_message: "메시지 보내기",
+    btn_finalize_to_inventory: "인벤토리로 확정",
+    capture_draft_title: "캡처 드래프트",
+    pending_confirmations_title: "확인 필요 (세션)",
+    ingredient_review_queue_title: "식재료 확인 큐",
+    btn_reload: "새로고침",
+    review_queue_desc: "모르겠거나 확신이 낮은 단어가 여기에 뜹니다. 한 번만 매핑하면 파서가 학습합니다.",
+    inventory_title: "인벤토리",
+    recipes_title: "레시피 추천",
+    shopping_title: "장보기 추천",
+    notifications_title: "알림",
+    btn_consume_1: "1개 소비",
+    btn_map_prefix: "매핑:",
+    btn_map_custom: "직접 매핑",
+    btn_ignore: "무시",
+    label_ingredient_key: "식자재 키",
+    label_display_name_optional: "표시 이름(선택)",
+    err_missing_key_map: "이 문장을 매핑하려면 ingredient_key가 필요합니다.",
+    unknown_phrase: "(알 수 없는 문구)",
+    review_meta_line: "사유: {reason} | 횟수: {seen}",
+    empty_inventory: "아직 인벤토리 항목이 없습니다.",
+    empty_recipes: "레시피 추천이 없습니다.",
+    empty_shopping: "장보기 추천이 없습니다.",
+    empty_notifications: "알림이 없습니다.",
+    empty_capture_none: "캡처 세션을 시작하세요.",
+    empty_capture_no_session: "활성 캡처 세션이 없습니다.",
+    empty_capture_draft: "드래프트가 비어있습니다.",
+    empty_capture_review: "이 세션에 확인할 항목이 없습니다.",
+    empty_review_queue: "확인할 항목이 없습니다.",
+    capture_error_need_text_or_vision: "메시지를 입력하거나 비전 아이템을 넣어주세요.",
+    err_no_capture_session: "확정할 캡처 세션이 없습니다.",
+    capture_error_no_confirmed: "아직 확정된 식재료가 없어요. 아래에서 {count}개를 확인해주세요.",
+    capture_error_none_detected: "이 메시지에서 식재료를 찾지 못했어요. 이름을 더 명확히 쓰거나 비전을 사용해보세요.",
+    capture_error_need_confirmation: "아래에서 {count}개를 더 확인해야 합니다.",
+    vision_no_detected: "이 이미지에서 식재료를 찾지 못했어요.",
+    camera_tip_https: "팁: 휴대폰에서 카메라 미리보기는 보통 HTTPS가 필요합니다. 사진 업로드는 동작합니다.",
+    camera_idle: "카메라 대기 중.",
+    voice_idle: "음성 대기 중.",
+    meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
+    meta_inventory_line: "{qty}{unit} | 유통기한 {exp} | D{days}",
+    meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
+    meta_recipe_missing: "부족: {missing}",
+    meta_shopping_reasons: "이유: {reasons}",
+    meta_shopping_related: "연관 레시피: {related}",
+    meta_notification_item: "아이템: {id}",
+    meta_notification_scheduled: "예약: {ts}",
+    toast_run_due: "알림 {count}건 발송 완료 ({ts})",
+    toast_reload_catalog: "캐시 {count}개 새로고침 완료 ({ts})",
+    badge_draft: "드래프트"
+  }
+};
+
+const STATUS_LABELS = {
+  en: {
+    fresh: "fresh",
+    expiring_soon: "expiring",
+    expired: "expired",
+    draft: "draft",
+    pending: "pending",
+    ignored: "ignored",
+    resolved: "resolved"
+  },
+  ko: {
+    fresh: "신선",
+    expiring_soon: "임박",
+    expired: "만료",
+    draft: "드래프트",
+    pending: "대기",
+    ignored: "무시",
+    resolved: "완료"
+  }
+};
+
+function normalizeLang(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return "";
+  }
+  if (raw === "ko" || raw.startsWith("ko-")) {
+    return "ko";
+  }
+  return "en";
+}
+
+function detectDefaultLang() {
+  const usp = new URLSearchParams(location.search);
+  const fromQuery = normalizeLang(usp.get("lang") || usp.get("locale") || "");
+  if (fromQuery) {
+    return fromQuery;
+  }
+
+  const stored = normalizeLang(localStorage.getItem(LANG_STORAGE_KEY) || "");
+  if (stored) {
+    return stored;
+  }
+
+  const nav = normalizeLang(navigator.language || (Array.isArray(navigator.languages) ? navigator.languages[0] : ""));
+  return nav || "en";
+}
+
+function t(key) {
+  const lang = currentLang || "en";
+  return I18N[lang]?.[key] ?? I18N.en[key] ?? String(key);
+}
+
+function tf(key, vars = {}) {
+  let msg = t(key);
+  Object.entries(vars).forEach(([k, v]) => {
+    msg = msg.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+  });
+  return msg;
+}
+
+function setLang(lang) {
+  const normalized = normalizeLang(lang) || "en";
+  currentLang = normalized;
+  localStorage.setItem(LANG_STORAGE_KEY, normalized);
+  const el = $("languageSelect");
+  if (el) {
+    el.value = normalized;
+  }
+  applyI18n();
+}
+
+function applyI18n() {
+  document.documentElement.lang = currentLang || "en";
+  document.title = t("doc_title");
+
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.getAttribute("data-i18n"));
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.getAttribute("data-i18n-html"));
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+  });
+}
+
+function statusLabel(status) {
+  const key = String(status || "").trim().toLowerCase() || "unknown";
+  return STATUS_LABELS[currentLang]?.[key] ?? STATUS_LABELS.en[key] ?? key;
+}
+
+function hasHangul(value) {
+  return /[\uAC00-\uD7A3]/.test(String(value || ""));
+}
+
+function pickKoreanAlias(aliases) {
+  const list = Array.isArray(aliases) ? aliases : [];
+  const hangul = list
+    .map((v) => String(v || "").trim())
+    .filter((v) => v && hasHangul(v));
+  if (hangul.length === 0) {
+    return null;
+  }
+  hangul.sort((a, b) => a.length - b.length);
+  return hangul[0];
+}
+
+function normalizeIngredientKeyLoose(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-]+/g, "_")
+    .replace(/[^\p{L}\p{N}_]+/gu, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+async function loadIngredientLabels(force = false) {
+  const userId = getUserId();
+  const needsReload = force || ingredientLabelsUserId !== userId || ingredientLabelsByKey.size === 0;
+  if (!needsReload) {
+    return;
+  }
+
+  if (!force && ingredientLabelsLoadPromise && ingredientLabelsLoadUserId === userId) {
+    await ingredientLabelsLoadPromise;
+    return;
+  }
+
+  ingredientLabelsLoadUserId = userId;
+  const promise = (async () => {
+    const q = encodeQuery({ user_id: userId, top_n: 500 });
+    const result = await request(`/api/v1/ingredients/catalog?${q}`, { method: "GET" });
+    const entries = Array.isArray(result?.data?.items) ? result.data.items : [];
+    const next = new Map();
+
+    entries.forEach((entry) => {
+      const k = normalizeIngredientKeyLoose(entry?.ingredient_key || "");
+      if (!k) {
+        return;
+      }
+      const displayName = String(entry?.display_name || entry?.ingredient_key || "").trim();
+      const aliases = Array.isArray(entry?.aliases) ? entry.aliases : [];
+      const nameKo = hasHangul(displayName) ? displayName : pickKoreanAlias(aliases) || displayName;
+      next.set(k, {
+        en: displayName || k,
+        ko: nameKo || displayName || k
+      });
+    });
+
+    ingredientLabelsUserId = userId;
+    ingredientLabelsByKey = next;
+  })();
+
+  ingredientLabelsLoadPromise = promise;
+  try {
+    await promise;
+  } finally {
+    if (ingredientLabelsLoadPromise === promise) {
+      ingredientLabelsLoadPromise = null;
+    }
+  }
+}
+
+function ingredientLabel(ingredientKey, fallback = "") {
+  const k = normalizeIngredientKeyLoose(ingredientKey || "");
+  const entry = k ? ingredientLabelsByKey.get(k) : null;
+  if (entry) {
+    return currentLang === "ko" ? entry.ko : entry.en;
+  }
+
+  const rawFallback = String(fallback || "").trim();
+  if (rawFallback) {
+    return rawFallback;
+  }
+  return ingredientKey || "";
+}
 
 function normalizeApiBase(value) {
   if (!value) {
@@ -189,7 +615,7 @@ async function sendCaptureMessagePayload(payload) {
   const text = (payload?.text || "").trim();
   const visionItems = Array.isArray(payload?.vision_detected_items) ? payload.vision_detected_items : [];
   if (!text && visionItems.length === 0) {
-    throw new Error("Type a message or provide vision items.");
+    throw new Error(t("capture_error_need_text_or_vision"));
   }
 
   const result = await request(`/api/v1/capture/sessions/${sessionId}/message`, {
@@ -210,11 +636,11 @@ async function sendCaptureMessagePayload(payload) {
     0;
 
   if (parsedCommandCount === 0 && reviewQueueCount > 0) {
-    setCaptureError(`No confirmed ingredient yet. ${reviewQueueCount} phrase(s) need confirmation below.`);
+    setCaptureError(tf("capture_error_no_confirmed", { count: reviewQueueCount }));
   } else if (parsedCommandCount === 0) {
-    setCaptureError("No ingredient was detected from this message. Add names explicitly or use Vision Items.");
+    setCaptureError(t("capture_error_none_detected"));
   } else if (reviewQueueCount > 0) {
-    setCaptureError(`${reviewQueueCount} phrase(s) still need confirmation below.`);
+    setCaptureError(tf("capture_error_need_confirmation", { count: reviewQueueCount }));
   } else {
     setCaptureError("");
   }
@@ -265,7 +691,7 @@ function getCaptureSessionId() {
 function statusBadge(status) {
   const span = document.createElement("span");
   span.className = `badge ${status}`;
-  span.textContent = status;
+  span.textContent = statusLabel(status);
   return span;
 }
 
@@ -296,12 +722,15 @@ function buildReviewQueueNode(item) {
 
   const name = document.createElement("strong");
   name.className = "name";
-  name.textContent = item.phrase || "(unknown phrase)";
+  name.textContent = item.phrase || t("unknown_phrase");
   main.appendChild(name);
 
   const meta = document.createElement("span");
   meta.className = "meta";
-  meta.textContent = `reason: ${item.reason || "unknown"} | seen: ${item.seen_count ?? 1}`;
+  meta.textContent = tf("review_meta_line", {
+    reason: item.reason || "unknown",
+    seen: item.seen_count ?? 1
+  });
   main.appendChild(meta);
 
   const candidateOptions = Array.isArray(item.candidate_options) ? item.candidate_options : [];
@@ -313,14 +742,15 @@ function buildReviewQueueNode(item) {
       btn.type = "button";
       btn.className = "btn tiny secondary";
       const score = Number(option.score || 0);
-      btn.textContent = `Map: ${option.ingredient_name} (${Math.round(score * 100)}%)`;
+      const optionLabel = ingredientLabel(option.ingredient_key, option.ingredient_name);
+      btn.textContent = `${t("btn_map_prefix")} ${optionLabel} (${Math.round(score * 100)}%)`;
       btn.addEventListener("click", async () => {
         btn.disabled = true;
         try {
           await resolveReviewQueueItem(item.id, {
             action: "map",
             ingredient_key: option.ingredient_key,
-            display_name: option.ingredient_name
+            display_name: optionLabel
           });
           setCaptureError("");
           await refreshAll();
@@ -341,23 +771,23 @@ function buildReviewQueueNode(item) {
 
   const keyInput = document.createElement("input");
   keyInput.type = "text";
-  keyInput.placeholder = "ingredient_key";
+  keyInput.placeholder = t("label_ingredient_key");
   if (candidateOptions.length > 0 && candidateOptions[0]?.ingredient_key) {
     keyInput.value = candidateOptions[0].ingredient_key;
   }
 
   const nameInput = document.createElement("input");
   nameInput.type = "text";
-  nameInput.placeholder = "display name (optional)";
+  nameInput.placeholder = t("label_display_name_optional");
 
   const mapBtn = document.createElement("button");
   mapBtn.type = "button";
   mapBtn.className = "btn tiny";
-  mapBtn.textContent = "Map Custom";
+  mapBtn.textContent = t("btn_map_custom");
   mapBtn.addEventListener("click", async () => {
     const ingredientKey = keyInput.value.trim();
     if (!ingredientKey) {
-      setGlobalError("ingredient_key is required to map this phrase.");
+      setGlobalError(t("err_missing_key_map"));
       return;
     }
 
@@ -381,7 +811,7 @@ function buildReviewQueueNode(item) {
   const ignoreBtn = document.createElement("button");
   ignoreBtn.type = "button";
   ignoreBtn.className = "btn tiny warn";
-  ignoreBtn.textContent = "Ignore";
+  ignoreBtn.textContent = t("btn_ignore");
   ignoreBtn.addEventListener("click", async () => {
     ignoreBtn.disabled = true;
     try {
@@ -444,30 +874,36 @@ function renderCaptureDraft(capture) {
 
   list.innerHTML = "";
   if (!capture || !capture.session) {
-    meta.textContent = "No active capture session.";
-    list.appendChild(emptyNode("Start a capture session."));
-    renderReviewQueueList("captureReviewList", [], "No pending confirmations in this session.");
+    meta.textContent = t("empty_capture_no_session");
+    list.appendChild(emptyNode(t("empty_capture_none")));
+    renderReviewQueueList("captureReviewList", [], t("empty_capture_review"));
     return;
   }
 
   const session = capture.session;
   const summary = capture.summary || {};
-  meta.textContent = `Session ${session.id} | status ${session.status} | items ${summary.item_count ?? 0} | total qty ${summary.total_quantity ?? 0}`;
+  meta.textContent = tf("meta_session_line", {
+    id: session.id,
+    status: session.status,
+    items: summary.item_count ?? 0,
+    qty: summary.total_quantity ?? 0
+  });
 
   const items = session.draft_items || [];
   if (items.length === 0) {
-    list.appendChild(emptyNode("Draft is empty."));
+    list.appendChild(emptyNode(t("empty_capture_draft")));
   } else {
     items.forEach((item) => {
+      const displayName = ingredientLabel(item.ingredient_key, item.ingredient_name);
       const node = document.createElement("div");
       node.className = "item";
       node.innerHTML = `
         <div class="item-main">
-          <strong class="name">${item.ingredient_name}</strong>
+          <strong class="name">${displayName}</strong>
           <span class="meta">${item.quantity} ${item.unit} | key ${item.ingredient_key}</span>
         </div>
         <div class="item-side">
-          <span class="badge fresh">draft</span>
+          <span class="badge fresh">${t("badge_draft")}</span>
         </div>
       `;
       list.appendChild(node);
@@ -478,7 +914,7 @@ function renderCaptureDraft(capture) {
   renderReviewQueueList(
     "captureReviewList",
     reviewQueueItems,
-    "No pending confirmations in this session."
+    t("empty_capture_review")
   );
 }
 
@@ -497,6 +933,7 @@ async function startCaptureSession() {
 }
 
 async function loadCaptureSession() {
+  await loadIngredientLabels();
   const sessionId = getCaptureSessionId();
   if (!sessionId) {
     renderCaptureDraft(null);
@@ -509,10 +946,11 @@ async function loadCaptureSession() {
 }
 
 async function loadReviewQueue() {
+  await loadIngredientLabels();
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId, status: "pending", limit: 80 });
   const result = await request(`/api/v1/ingredients/review-queue?${q}`, { method: "GET" });
-  renderReviewQueueList("reviewQueueList", result?.data?.items || [], "No pending review items.");
+  renderReviewQueueList("reviewQueueList", result?.data?.items || [], t("empty_review_queue"));
 }
 
 async function sendCaptureMessage() {
@@ -586,9 +1024,9 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
 
   const reviewQueueCount = result?.data?.review_queue_count ?? 0;
   if (detectedItems.length === 0) {
-    setCaptureError(result?.data?.message || "No ingredients were detected from this image.");
+    setCaptureError(result?.data?.message || t("vision_no_detected"));
   } else if (reviewQueueCount > 0) {
-    setCaptureError(`${reviewQueueCount} phrase(s) need confirmation below.`);
+    setCaptureError(tf("capture_error_need_confirmation", { count: reviewQueueCount }));
   } else {
     setCaptureError("");
   }
@@ -1211,7 +1649,7 @@ function handleRealtimeEvent(evt) {
 async function finalizeCaptureSession() {
   const sessionId = getCaptureSessionId();
   if (!sessionId) {
-    throw new Error("No capture session to finalize.");
+    throw new Error(t("err_no_capture_session"));
   }
 
   const result = await request(`/api/v1/capture/sessions/${sessionId}/finalize`, {
@@ -1249,13 +1687,19 @@ async function consumeItem(itemId) {
 function buildInventoryNode(item) {
   const tpl = $("inventoryItemTemplate");
   const node = tpl.content.firstElementChild.cloneNode(true);
-  node.querySelector(".name").textContent = item.ingredient_name;
-  node.querySelector(".meta").textContent = `${item.quantity} ${item.unit} | exp ${item.suggested_expiration_date} | D${item.days_remaining}`;
+  node.querySelector(".name").textContent = ingredientLabel(item.ingredient_key, item.ingredient_name);
+  node.querySelector(".meta").textContent = tf("meta_inventory_line", {
+    qty: item.quantity,
+    unit: item.unit,
+    exp: item.suggested_expiration_date,
+    days: item.days_remaining
+  });
 
   const badgeHost = node.querySelector(".badge");
   badgeHost.replaceWith(statusBadge(item.status));
 
   const btn = node.querySelector(".consume-btn");
+  btn.textContent = t("btn_consume_1");
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
@@ -1272,6 +1716,7 @@ function buildInventoryNode(item) {
 }
 
 async function loadInventory() {
+  await loadIngredientLabels();
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId });
   const result = await request(`/api/v1/inventory/items?${q}`, { method: "GET" });
@@ -1280,7 +1725,7 @@ async function loadInventory() {
   const items = result.data.items || [];
 
   if (items.length === 0) {
-    list.appendChild(emptyNode("No inventory items yet."));
+    list.appendChild(emptyNode(t("empty_inventory")));
     return;
   }
 
@@ -1292,19 +1737,27 @@ function renderRecipeList(items) {
   list.innerHTML = "";
 
   if (!items.length) {
-    list.appendChild(emptyNode("No recipe recommendations yet."));
+    list.appendChild(emptyNode(t("empty_recipes")));
     return;
   }
 
   items.forEach((r) => {
     const node = document.createElement("div");
     node.className = "item";
-    const missing = (r.missing_ingredient_keys || []).join(", ");
+    const missingKeys = Array.isArray(r.missing_ingredient_keys) ? r.missing_ingredient_keys : [];
+    const missing = missingKeys
+      .map((k) => ingredientLabel(k, k))
+      .filter((v) => String(v || "").trim())
+      .join(", ");
     node.innerHTML = `
       <div class="item-main">
         <strong class="name">${r.recipe_name}</strong>
-        <span class="meta">${r.chef} | score ${r.score} | match ${(r.match_ratio * 100).toFixed(0)}%</span>
-        <span class="meta">missing: ${missing || "none"}</span>
+        <span class="meta">${tf("meta_recipe_line", {
+          chef: r.chef,
+          score: r.score,
+          match: `${(r.match_ratio * 100).toFixed(0)}`
+        })}</span>
+        <span class="meta">${tf("meta_recipe_missing", { missing: missing || t("word_none") })}</span>
       </div>
       <div class="item-side"></div>
     `;
@@ -1314,6 +1767,7 @@ function renderRecipeList(items) {
 }
 
 async function loadRecipes() {
+  await loadIngredientLabels();
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId, top_n: 8 });
   const result = await request(`/api/v1/recommendations/recipes?${q}`, { method: "GET" });
@@ -1324,18 +1778,24 @@ function renderShopping(items) {
   const list = $("shoppingList");
   list.innerHTML = "";
   if (!items.length) {
-    list.appendChild(emptyNode("No shopping suggestions."));
+    list.appendChild(emptyNode(t("empty_shopping")));
     return;
   }
 
   items.forEach((s) => {
     const node = document.createElement("div");
     node.className = "item";
+    const label = ingredientLabel(s.ingredient_key, s.ingredient_key);
+    const reasons = Array.isArray(s.reasons) ? s.reasons.join(", ") : "";
+    const related =
+      Array.isArray(s.related_recipe_ids) && s.related_recipe_ids.length > 0
+        ? s.related_recipe_ids.join(", ")
+        : t("word_none");
     node.innerHTML = `
       <div class="item-main">
-        <strong class="name">${s.ingredient_key}</strong>
-        <span class="meta">reasons: ${(s.reasons || []).join(", ")}</span>
-        <span class="meta">related recipes: ${(s.related_recipe_ids || []).join(", ") || "n/a"}</span>
+        <strong class="name">${label}</strong>
+        <span class="meta">${tf("meta_shopping_reasons", { reasons })}</span>
+        <span class="meta">${tf("meta_shopping_related", { related })}</span>
       </div>
       <div class="item-side">
         <span class="badge fresh">P${s.priority}</span>
@@ -1346,6 +1806,7 @@ function renderShopping(items) {
 }
 
 async function loadShopping() {
+  await loadIngredientLabels();
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId, top_n: 8, top_recipe_count: 3 });
   const result = await request(`/api/v1/shopping/suggestions?${q}`, { method: "GET" });
@@ -1356,7 +1817,7 @@ function renderNotifications(items) {
   const list = $("notificationList");
   list.innerHTML = "";
   if (!items.length) {
-    list.appendChild(emptyNode("No notifications."));
+    list.appendChild(emptyNode(t("empty_notifications")));
     return;
   }
 
@@ -1366,8 +1827,8 @@ function renderNotifications(items) {
     node.innerHTML = `
       <div class="item-main">
         <strong class="name">${n.notify_type}</strong>
-        <span class="meta">item: ${n.inventory_item_id}</span>
-        <span class="meta">scheduled: ${n.scheduled_at}</span>
+        <span class="meta">${tf("meta_notification_item", { id: n.inventory_item_id })}</span>
+        <span class="meta">${tf("meta_notification_scheduled", { ts: n.scheduled_at })}</span>
       </div>
       <div class="item-side"></div>
     `;
@@ -1393,7 +1854,10 @@ async function runDueNotifications() {
     })
   });
 
-  $("runDueResult").textContent = `Sent ${result.data.sent_count} notification(s) at ${result.data.as_of_datetime}`;
+  $("runDueResult").textContent = tf("toast_run_due", {
+    count: result.data.sent_count,
+    ts: result.data.as_of_datetime
+  });
 }
 
 async function reloadIngredientCatalog() {
@@ -1404,7 +1868,10 @@ async function reloadIngredientCatalog() {
 
   const count = result?.data?.reloaded_count ?? 0;
   const reloadedAt = result?.data?.reloaded_at || new Date().toISOString();
-  $("reloadCatalogResult").textContent = `Reloaded ${count} cache(s) at ${reloadedAt}`;
+  $("reloadCatalogResult").textContent = tf("toast_reload_catalog", {
+    count,
+    ts: reloadedAt
+  });
 }
 
 function parseNumberOrNull(value) {
@@ -1467,6 +1934,16 @@ async function refreshAll() {
 function bindEvents() {
   $("createItemForm").addEventListener("submit", createItemFromForm);
   $("refreshAllBtn").addEventListener("click", refreshAll);
+  if ($("languageSelect")) {
+    $("languageSelect").addEventListener("change", async () => {
+      setLang($("languageSelect").value);
+      try {
+        await refreshAll();
+      } catch (err) {
+        setGlobalError(err.message);
+      }
+    });
+  }
   $("saveApiBaseBtn").addEventListener("click", async (event) => {
     event.preventDefault();
     const value = $("apiBaseUrl").value;
@@ -1634,6 +2111,7 @@ function bindEvents() {
 
 function init() {
   initApiBaseFromQuery();
+  setLang(detectDefaultLang());
   const apiBaseInput = $("apiBaseUrl");
   if (apiBaseInput) {
     apiBaseInput.value = getApiBase();
@@ -1644,11 +2122,11 @@ function init() {
     purchased.value = todayIso();
   }
   if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
-    setCameraStatus("Tip: mobile camera preview usually requires HTTPS. Photo upload still works.");
+    setCameraStatus(t("camera_tip_https"));
   } else {
-    setCameraStatus("Camera idle.");
+    setCameraStatus(t("camera_idle"));
   }
-  setRealtimeStatus("Voice idle.");
+  setRealtimeStatus(t("voice_idle"));
   window.addEventListener("beforeunload", stopLiveCamera);
   window.addEventListener("beforeunload", stopRealtimeVoice);
   bindEvents();
