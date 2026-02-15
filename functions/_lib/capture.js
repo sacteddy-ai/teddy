@@ -15,6 +15,149 @@ function normalizeReviewPhrase(value) {
   return normalizeWhitespace(normalizeWord(value));
 }
 
+function containsCorrectionIntent(text) {
+  const t = normalizeWord(text);
+  if (!t) {
+    return false;
+  }
+  return (
+    t.includes("아니라") ||
+    t.includes("아니고") ||
+    t.includes("정정") ||
+    t.includes("대신") ||
+    t.includes("바꿔") ||
+    t.includes("바꾸") ||
+    t.includes("수정") ||
+    /\bnot\b/i.test(t) ||
+    /\binstead\b/i.test(t) ||
+    /\brather\b/i.test(t)
+  );
+}
+
+function findDraftItemByKey(draftItems, ingredientKey) {
+  const key = normalizeIngredientKey(ingredientKey);
+  if (!key) {
+    return null;
+  }
+  for (const item of draftItems || []) {
+    if (normalizeIngredientKey(item?.ingredient_key || "") === key) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function pickLastAddedIngredientKeyFromTurns(session) {
+  const turns = Array.isArray(session?.turns) ? session.turns : [];
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const cmds = Array.isArray(turns[i]?.parsed_commands) ? turns[i].parsed_commands : [];
+    for (let j = cmds.length - 1; j >= 0; j -= 1) {
+      const cmd = cmds[j];
+      if (cmd?.action === "add" && cmd?.ingredient_key) {
+        const key = normalizeIngredientKey(cmd.ingredient_key);
+        if (key) {
+          return key;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function commandTextIndex(cmd, normalizedText) {
+  const hay = String(normalizedText || "");
+  if (!hay) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const alias = cmd?.matched_alias || cmd?.ingredient_name || cmd?.ingredient_key || "";
+  const needle = String(alias || "").toLowerCase();
+  if (!needle) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const idx = hay.indexOf(needle);
+  return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
+}
+
+function maybeRewriteCommandsForCorrection(session, textInput, draftItems, commands, parseResult) {
+  const textHasCorrection =
+    Boolean(parseResult?.correction_intent_detected) || containsCorrectionIntent(textInput || "");
+  if (!textHasCorrection) {
+    return commands;
+  }
+
+  const list = Array.isArray(commands) ? commands : [];
+  const adds = list.filter((c) => c && c.action === "add" && c.ingredient_key);
+  const removes = list.filter((c) => c && c.action === "remove");
+  if (removes.length > 0) {
+    return commands;
+  }
+  if (adds.length === 0) {
+    return commands;
+  }
+  if (adds.length > 2) {
+    // Too ambiguous. Keep original add behavior.
+    return commands;
+  }
+
+  const textLower = String(textInput || "").toLowerCase();
+
+  let fromKey = "";
+  let toCmd = adds[adds.length - 1];
+
+  if (adds.length === 2) {
+    const sorted = adds
+      .map((cmd) => ({ cmd, idx: commandTextIndex(cmd, textLower) }))
+      .sort((a, b) => a.idx - b.idx);
+    const fromCmd = sorted[0]?.cmd || adds[0];
+    toCmd = sorted[1]?.cmd || adds[1];
+    fromKey = normalizeIngredientKey(fromCmd?.ingredient_key || "");
+  } else {
+    const lastAdded = pickLastAddedIngredientKeyFromTurns(session);
+    fromKey = normalizeIngredientKey(lastAdded || "");
+  }
+
+  const toKey = normalizeIngredientKey(toCmd?.ingredient_key || "");
+  if (!fromKey || !toKey || fromKey === toKey) {
+    return commands;
+  }
+
+  const fromDraft = findDraftItemByKey(draftItems, fromKey);
+  if (!fromDraft) {
+    return commands;
+  }
+
+  const qty = Math.round(Number(fromDraft.quantity || 1) * 100) / 100;
+  const unit = fromDraft.unit || toCmd?.unit || "ea";
+
+  return [
+    {
+      action: "remove",
+      ingredient_key: fromKey,
+      ingredient_name: fromDraft.ingredient_name || fromKey,
+      quantity: null,
+      unit,
+      remove_all: true,
+      source: "chat_text",
+      confidence: "high",
+      matched_alias: fromKey,
+      match_type: "correction"
+    },
+    {
+      ...toCmd,
+      action: "add",
+      ingredient_key: toKey,
+      ingredient_name: toCmd?.ingredient_name || toKey,
+      quantity: qty,
+      unit,
+      remove_all: false,
+      source: toCmd?.source || "chat_text",
+      confidence: toCmd?.confidence || "medium",
+      matched_alias: toCmd?.matched_alias || toCmd?.ingredient_name || toKey,
+      match_type: "correction"
+    }
+  ];
+}
+
 export function convertPhraseToIngredientKey(phrase) {
   const raw = String(phrase || "").trim();
   if (!raw) {
@@ -190,7 +333,7 @@ export async function buildCaptureSessionView(context, session) {
 }
 
 export async function applyCaptureSessionParsedInput(context, session, sourceType, textInput, visionDetectedItems, parseResult) {
-  const commands = Array.isArray(parseResult?.commands) ? parseResult.commands : [];
+  let commands = Array.isArray(parseResult?.commands) ? parseResult.commands : [];
   const reviewCandidatesRaw = Array.isArray(parseResult?.review_candidates) ? parseResult.review_candidates : [];
   let reviewCandidates = reviewCandidatesRaw;
   if (!parseResult?.llm_extraction_used) {
@@ -202,6 +345,7 @@ export async function applyCaptureSessionParsedInput(context, session, sourceTyp
   }
 
   const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
+  commands = maybeRewriteCommandsForCorrection(session, textInput, currentDraft, commands, parseResult);
   const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);
 
   const turnId = crypto.randomUUID();

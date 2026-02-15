@@ -3059,7 +3059,20 @@ function handleRealtimeEvent(evt) {
       return;
     }
 
-    const finalText = String(transcript || realtimeUserTranscriptDelta || "").trim();
+    const deltaText = String(realtimeUserTranscriptDelta || "").trim();
+    const transcriptText = String(transcript || "").trim();
+    let finalText = "";
+    if (deltaText && transcriptText) {
+      if (transcriptText.includes(deltaText)) {
+        finalText = transcriptText;
+      } else if (deltaText.includes(transcriptText)) {
+        finalText = deltaText;
+      } else {
+        finalText = `${deltaText} ${transcriptText}`.trim();
+      }
+    } else {
+      finalText = (transcriptText || deltaText).trim();
+    }
     if (finalText) {
       realtimeUserTranscriptDelta = "";
       queueRealtimeSpeechIngest(finalText);
@@ -3085,19 +3098,8 @@ function handleRealtimeEvent(evt) {
     return;
   }
 
-  // Some variants send the final user transcript as a conversation item.
-  if ((type === "conversation.item.done" || type === "conversation.item.created") && evt?.item?.role === "user") {
-    const parts = Array.isArray(evt.item?.content) ? evt.item.content : [];
-    const transcriptParts = parts
-      .map((p) => (p && typeof p.transcript === "string" ? p.transcript.trim() : ""))
-      .filter((v) => v.length > 0);
-    const finalText = transcriptParts.join(" ").trim();
-    if (finalText) {
-      realtimeUserTranscriptDelta = "";
-      queueRealtimeSpeechIngest(finalText);
-    }
-    return;
-  }
+  // We intentionally do not ingest from user conversation items, because we already ingest from
+  // input_audio_transcription events. Ingesting both can double-send partial transcripts.
 
   // Some variants send the final assistant message as a conversation item.
   if (type === "conversation.item.done" && evt?.item?.role === "assistant") {

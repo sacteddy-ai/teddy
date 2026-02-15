@@ -178,7 +178,23 @@ export function getDefaultStopwordMap() {
     "첨",
     "맨첨",
     "처음",
-    "맨처음"
+    "맨처음",
+    // Corrections / edits (Korean)
+    "아니",
+    "아니야",
+    "아냐",
+    "아니라",
+    "아니고",
+    "정정",
+    "대신",
+    "말고",
+    "바꿔",
+    "바꾸기",
+    "수정",
+    // Corrections / edits (English)
+    "not",
+    "instead",
+    "rather"
   ];
 
   const map = new Map();

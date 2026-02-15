@@ -17,6 +17,24 @@ function containsFinalizeIntent(text) {
   return /(finish|done|finalize|완료|끝|마무리|확정)/i.test(normalized);
 }
 
+function containsCorrectionIntent(normalizedClause) {
+  const t = String(normalizedClause || "").trim().toLowerCase();
+  if (!t) {
+    return false;
+  }
+  if (t.includes("아니라") || t.includes("아니고") || t.includes("정정") || t.includes("대신")) {
+    return true;
+  }
+  if (t.includes("바꿔") || t.includes("바꾸") || t.includes("수정")) {
+    return true;
+  }
+  // English
+  if (/\bnot\b/i.test(t) || /\binstead\b/i.test(t) || /\brather\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
 function containsRemoveIntent(normalizedClause) {
   const patterns = [
     /(?<![\p{L}\p{N}_])remove(?![\p{L}\p{N}_])/iu,
@@ -319,6 +337,7 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
   const reviewCandidatesMap = new Map();
   const finalizeRequested = containsFinalizeIntent(text || "");
   let removeIntentDetected = false;
+  let correctionIntentDetected = false;
 
   if (text && String(text).trim()) {
     const clauses = String(text)
@@ -330,6 +349,9 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
       const normalizedClause = normalizeWord(clause);
       if (!normalizedClause) {
         continue;
+      }
+      if (containsCorrectionIntent(normalizedClause)) {
+        correctionIntentDetected = true;
       }
 
       const isRemove = containsRemoveIntent(normalizedClause);
@@ -419,6 +441,7 @@ export function parseConversationCommands(text, visionDetectedItems, aliasLookup
     commands,
     review_candidates: Array.from(reviewCandidatesMap.values()).sort((a, b) => String(a.phrase).localeCompare(String(b.phrase))),
     finalize_requested: finalizeRequested,
-    remove_intent_detected: removeIntentDetected
+    remove_intent_detected: removeIntentDetected,
+    correction_intent_detected: correctionIntentDetected
   };
 }
