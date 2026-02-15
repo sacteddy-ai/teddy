@@ -5,6 +5,7 @@ import { buildAliasLookup } from "../../../_lib/catalog.js";
 import { parseConversationCommands } from "../../../_lib/chat.js";
 import { augmentParseResultWithChatLlmExtraction } from "../../../_lib/chat_llm_extractor.js";
 import { applyCaptureSessionParsedInput } from "../../../_lib/capture.js";
+import { ensureCatalogLocalizationForCommands } from "../../../_lib/ingredient_localization.js";
 
 export async function onRequest(context) {
   const method = context.request.method.toUpperCase();
@@ -24,6 +25,7 @@ export async function onRequest(context) {
     const sourceType = payload?.source_type ? String(payload.source_type).trim() : "vision";
     const segmentationMode = payload?.segmentation_mode ? String(payload.segmentation_mode).trim().toLowerCase() : "auto";
     const autoApplyToSession = payload?.auto_apply_to_session !== false;
+    const uiLang = payload?.ui_lang ? String(payload.ui_lang).trim().toLowerCase() : "";
 
     if (!imageBase64Input || !imageBase64Input.trim()) {
       throw new Error("image_base64 is required.");
@@ -37,6 +39,7 @@ export async function onRequest(context) {
 
     let captureApplyResult = null;
     let appliedToSession = false;
+    let localization = null;
 
     if (autoApplyToSession && sessionIdInput && detectedItems.length > 0) {
       const session = await getObject(context.env, captureSessionKey(sessionIdInput));
@@ -59,6 +62,15 @@ export async function onRequest(context) {
         aliasLookup,
         parseResult
       );
+
+      // Best-effort: ensure the catalog has Korean aliases so the UI can display items in Korean.
+      // This does not affect draft parsing for this request, it only improves label rendering.
+      try {
+        localization = await ensureCatalogLocalizationForCommands(context, session.user_id, parseResult?.commands || [], uiLang);
+      } catch {
+        localization = null;
+      }
+
       captureApplyResult = await applyCaptureSessionParsedInput(
         context,
         session,
@@ -90,6 +102,7 @@ export async function onRequest(context) {
         turn: captureApplyResult ? captureApplyResult.turn : null,
         review_queue_items: captureApplyResult ? captureApplyResult.review_queue_items : [],
         review_queue_count: captureApplyResult ? captureApplyResult.review_queue_count : 0,
+        localization,
         message
       }
     });

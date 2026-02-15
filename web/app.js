@@ -1262,6 +1262,7 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
       session_id: sessionId,
       image_base64: imageDataUrl,
       text_hint: (textHint || ($("captureMessageInput")?.value || "").trim()) || null,
+      ui_lang: currentLang,
       source_type: "vision",
       auto_apply_to_session: true,
       segmentation_mode: segmentationMode || getSegmentationMode()
@@ -1276,6 +1277,18 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
   const capture = result?.data?.capture || null;
   if (capture) {
     renderCaptureDraft(capture);
+  }
+
+  // If the server learned new localized aliases, refresh the catalog so labels render correctly.
+  const locUpdated = Number(result?.data?.localization?.updated_count || 0);
+  if (locUpdated > 0) {
+    try {
+      await loadIngredientLabels(true);
+      if (capture) {
+        renderCaptureDraft(capture);
+      }
+      renderInventoryFromCache();
+    } catch {}
   }
 
   const segmentation = result?.data?.vision?.segmentation || {};
