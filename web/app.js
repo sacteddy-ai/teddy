@@ -1017,6 +1017,7 @@ async function replaceCaptureDraftIngredient(fromIngredientKey, toLabel, quantit
       ui_lang: currentLang,
       from_ingredient_key: fromKey,
       to_label: label,
+      replace_all: true,
       quantity: quantity ?? 1,
       unit: unit || "ea"
     })

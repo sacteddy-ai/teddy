@@ -241,12 +241,13 @@ export function applyConversationCommandsToDraft(draftItems, commands) {
   const map = new Map();
 
   for (const item of draftItems || []) {
-    const key = normalizeWord(item?.ingredient_key || "");
+    const key = normalizeIngredientKey(item?.ingredient_key || "");
     if (!key) {
       continue;
     }
     map.set(key, {
-      ingredient_key: item.ingredient_key,
+      // Canonicalize stored keys so subsequent edits (replace/remove) always match.
+      ingredient_key: key,
       ingredient_name: item.ingredient_name,
       quantity: Number(item.quantity || 0),
       unit: item.unit || "ea",
@@ -257,7 +258,7 @@ export function applyConversationCommandsToDraft(draftItems, commands) {
   }
 
   for (const command of commands || []) {
-    const key = normalizeWord(command?.ingredient_key || "");
+    const key = normalizeIngredientKey(command?.ingredient_key || "");
     if (!key) {
       continue;
     }
@@ -268,7 +269,7 @@ export function applyConversationCommandsToDraft(draftItems, commands) {
     if (command.action === "add") {
       if (!map.has(key)) {
         map.set(key, {
-          ingredient_key: command.ingredient_key,
+          ingredient_key: key,
           ingredient_name: command.ingredient_name || command.ingredient_key,
           quantity: 0,
           unit,

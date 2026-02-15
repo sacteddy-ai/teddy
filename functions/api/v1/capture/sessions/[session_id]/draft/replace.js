@@ -56,6 +56,7 @@ export async function onRequest(context) {
     const payload = await readJsonOptional(context.request);
     const userId = payload?.user_id ? String(payload.user_id).trim() : "demo-user";
     const uiLang = payload?.ui_lang ? String(payload.ui_lang).trim().toLowerCase() : "";
+    const replaceAll = payload?.replace_all === true;
 
     const fromKeyRaw = payload?.from_ingredient_key ? String(payload.from_ingredient_key).trim() : "";
     if (!fromKeyRaw) {
@@ -89,14 +90,30 @@ export async function onRequest(context) {
     const aliasLookup = await buildAliasLookup(context, session.user_id);
     const target = resolveTargetIngredient(aliasLookup, toLabel);
 
+    const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
+    let effectiveQuantity = quantity;
+    let effectiveUnit = unit;
+
+    if (replaceAll) {
+      const fromEntry =
+        currentDraft.find((i) => normalizeIngredientKey(i?.ingredient_key || "") === fromKey) || null;
+      const fromQty = fromEntry ? Number(fromEntry.quantity || 0) : 0;
+      if (Number.isFinite(fromQty) && fromQty > 0) {
+        effectiveQuantity = Math.round(fromQty * 100) / 100;
+      }
+      if (fromEntry?.unit) {
+        effectiveUnit = coerceUnit(fromEntry.unit);
+      }
+    }
+
     const commands = [
       {
         action: "remove",
         ingredient_key: fromKey,
         ingredient_name: fromKey,
-        quantity,
-        unit,
-        remove_all: false,
+        quantity: replaceAll ? null : effectiveQuantity,
+        unit: effectiveUnit,
+        remove_all: Boolean(replaceAll),
         source: "draft_edit",
         confidence: "high",
         matched_alias: fromKeyRaw,
@@ -106,8 +123,8 @@ export async function onRequest(context) {
         action: "add",
         ingredient_key: target.ingredient_key,
         ingredient_name: target.ingredient_name,
-        quantity,
-        unit,
+        quantity: effectiveQuantity,
+        unit: effectiveUnit,
         remove_all: false,
         source: "draft_edit",
         confidence: "high",
@@ -124,7 +141,6 @@ export async function onRequest(context) {
       localization = null;
     }
 
-    const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
     const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);
 
     const updatedAt = nowIso();
@@ -142,8 +158,9 @@ export async function onRequest(context) {
           from_ingredient_key: fromKey,
           to_ingredient_key: target.ingredient_key,
           to_ingredient_name: target.ingredient_name,
-          quantity,
-          unit
+          quantity: effectiveQuantity,
+          unit: effectiveUnit,
+          replace_all: Boolean(replaceAll)
         },
         localization
       }
@@ -156,4 +173,3 @@ export async function onRequest(context) {
     return errorResponse(context, msg, 400);
   }
 }
-
