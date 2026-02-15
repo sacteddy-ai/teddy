@@ -3729,7 +3729,8 @@ function renderNotifications(items) {
 
 async function loadNotifications() {
   const userId = getUserId();
-  const q = encodeQuery({ user_id: userId });
+  // Show only pending notifications by default.
+  const q = encodeQuery({ user_id: userId, status: "pending" });
   const result = await request(`/api/v1/notifications?${q}`, { method: "GET" });
   renderNotifications(result.data.items || []);
 }

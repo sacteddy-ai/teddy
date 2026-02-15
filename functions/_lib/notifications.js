@@ -35,6 +35,12 @@ export function dispatchDueNotifications(notifications, asOfDateTimeIso) {
   const sent = [];
 
   for (const item of notifications || []) {
+    // Treat the KV list as a queue of pending notifications. We intentionally drop "sent" entries
+    // so users don't keep seeing already-delivered notifications in the UI.
+    if (item?.status === "sent") {
+      continue;
+    }
+
     const mutable = {
       id: item.id,
       user_id: item.user_id,
@@ -51,6 +57,8 @@ export function dispatchDueNotifications(notifications, asOfDateTimeIso) {
       mutable.status = "sent";
       mutable.sent_at = asOf.toISOString();
       sent.push(mutable);
+      // Do not keep sent notifications in the pending queue.
+      continue;
     }
 
     updated.push(mutable);
@@ -62,4 +70,3 @@ export function dispatchDueNotifications(notifications, asOfDateTimeIso) {
     sent_count: sent.length
   };
 }
-

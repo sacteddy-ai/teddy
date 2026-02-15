@@ -222,6 +222,18 @@ export async function invokeInventoryQuantityAdjustment(context, userId, itemId,
   }
 
   await putArray(context.env, invKey, updated);
+
+  if (!updatedItem) {
+    // When an item is removed via quantity adjustment, clear its notifications too.
+    const nKey = notificationsKey(userId);
+    const notifications = await getArray(context.env, nKey);
+    const filtered = (notifications || []).filter((n) => n && String(n.inventory_item_id) !== String(itemId));
+    const removedNotificationCount = Math.max(0, (notifications || []).length - filtered.length);
+    if (removedNotificationCount > 0) {
+      await putArray(context.env, nKey, filtered);
+    }
+  }
+
   return { updated_item: updatedItem, removed: !updatedItem };
 }
 

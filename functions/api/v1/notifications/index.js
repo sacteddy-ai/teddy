@@ -1,5 +1,5 @@
 import { jsonResponse, errorResponse, withOptionsCors } from "../../../_lib/http.js";
-import { getArray, notificationsKey } from "../../../_lib/store.js";
+import { getArray, putArray, inventoryKey, notificationsKey } from "../../../_lib/store.js";
 
 export async function onRequest(context) {
   const method = context.request.method.toUpperCase();
@@ -17,6 +17,17 @@ export async function onRequest(context) {
     const dueUntil = (url.searchParams.get("due_until") || "").trim();
 
     let items = await getArray(context.env, notificationsKey(userId));
+
+    // Garbage-collect orphaned notifications (inventory items already removed).
+    // This keeps the UI clean even if older data exists from before cleanup logic was added.
+    const inventoryItems = await getArray(context.env, inventoryKey(userId));
+    const invIds = new Set((inventoryItems || []).map((i) => String(i?.id || "")).filter((v) => v));
+    const pruned = (items || []).filter((n) => n && invIds.has(String(n.inventory_item_id)));
+    if (pruned.length !== (items || []).length) {
+      items = pruned;
+      await putArray(context.env, notificationsKey(userId), items);
+    }
+
     if (status) {
       items = items.filter((n) => n && n.status === status);
     }
@@ -41,4 +52,3 @@ export async function onRequest(context) {
     return errorResponse(context, err?.message || String(err), 400);
   }
 }
-
