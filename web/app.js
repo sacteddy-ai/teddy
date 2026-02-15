@@ -46,6 +46,7 @@ let ingredientLabelsLoadUserId = "";
 
 let inventoryItemsCache = [];
 let inventoryFilterStorage = "refrigerated";
+let inventorySelectedIds = new Set();
 
 const I18N = {
   en: {
@@ -146,6 +147,11 @@ const I18N = {
     shopping_title: "Shopping Suggestions",
     notifications_title: "Notifications",
     btn_consume_1: "Consume 1",
+    btn_select_all: "Select all",
+    btn_clear_selection: "Clear",
+    btn_add_1: "Add 1",
+    btn_delete_selected: "Delete",
+    inventory_selected_count: "Selected: {count}",
     btn_map_prefix: "Map:",
     btn_map_custom: "Map Custom",
     btn_ignore: "Ignore",
@@ -300,6 +306,11 @@ const I18N = {
     shopping_title: "장보기 추천",
     notifications_title: "알림",
     btn_consume_1: "1개 소비",
+    btn_select_all: "전체 선택",
+    btn_clear_selection: "선택 해제",
+    btn_add_1: "1개 추가",
+    btn_delete_selected: "삭제",
+    inventory_selected_count: "선택: {count}개",
     btn_map_prefix: "매핑:",
     btn_map_custom: "직접 매핑",
     btn_ignore: "무시",
@@ -3167,6 +3178,7 @@ function detectDefaultInventoryFilterStorage() {
 function setInventoryFilterStorage(value, options = {}) {
   const next = normalizeStorageType(value);
   inventoryFilterStorage = next;
+  clearInventorySelection();
   if (options?.persist !== false) {
     localStorage.setItem(INVENTORY_FILTER_STORAGE_KEY, next);
   }
@@ -3197,15 +3209,198 @@ function renderInventoryFromCache() {
 
   if (filtered.length === 0) {
     list.appendChild(emptyNode(t("empty_inventory")));
+    syncInventoryBulkBar();
     return;
   }
 
   filtered.forEach((item) => list.appendChild(buildInventoryNode(item)));
+  syncInventoryBulkBar();
+}
+
+function getVisibleInventoryItems() {
+  const items = Array.isArray(inventoryItemsCache) ? inventoryItemsCache : [];
+  return items.filter((item) => normalizeStorageType(item?.storage_type || "") === inventoryFilterStorage);
+}
+
+function clearInventorySelection() {
+  inventorySelectedIds = new Set();
+  const selectAll = $("inventorySelectAll");
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+  }
+  syncInventoryBulkBar();
+}
+
+function syncInventoryBulkBar() {
+  const countEl = $("inventorySelectedCount");
+  const addBtn = $("inventoryBulkAddBtn");
+  const delBtn = $("inventoryBulkDeleteBtn");
+  const clearBtn = $("inventoryBulkClearBtn");
+  const selectAll = $("inventorySelectAll");
+
+  const visible = getVisibleInventoryItems();
+  const visibleIds = new Set(visible.map((i) => String(i.id)));
+  const selectedVisible = Array.from(inventorySelectedIds).filter((id) => visibleIds.has(String(id)));
+
+  // Drop selections for items that no longer exist.
+  const allIds = new Set((Array.isArray(inventoryItemsCache) ? inventoryItemsCache : []).map((i) => String(i?.id || "")));
+  const nextSelected = new Set();
+  for (const id of inventorySelectedIds) {
+    if (allIds.has(String(id))) {
+      nextSelected.add(String(id));
+    }
+  }
+  inventorySelectedIds = nextSelected;
+
+  if (countEl) {
+    countEl.textContent = tf("inventory_selected_count", { count: selectedVisible.length });
+  }
+
+  const hasAny = selectedVisible.length > 0;
+  if (addBtn) addBtn.disabled = !hasAny;
+  if (delBtn) delBtn.disabled = !hasAny;
+  if (clearBtn) clearBtn.disabled = !hasAny;
+
+  if (selectAll) {
+    if (visible.length === 0) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      selectAll.disabled = true;
+    } else {
+      selectAll.disabled = false;
+      const selectedCount = selectedVisible.length;
+      selectAll.checked = selectedCount > 0 && selectedCount === visible.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < visible.length;
+    }
+  }
+
+  // Ensure checkboxes reflect the selection set (for actions like "Clear").
+  const list = $("inventoryList");
+  if (list) {
+    list.querySelectorAll(".inventory-item").forEach((node) => {
+      const id = String(node?.dataset?.itemId || "").trim();
+      const cb = node.querySelector(".inventory-select");
+      if (cb && id) {
+        cb.checked = inventorySelectedIds.has(id);
+      }
+    });
+  }
+}
+
+async function adjustInventoryItemQuantity(itemId, deltaQuantity) {
+  const id = String(itemId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const delta = Number(deltaQuantity);
+  if (!Number.isFinite(delta) || delta === 0) {
+    return null;
+  }
+  const result = await request(`/api/v1/inventory/items/${id}/adjust`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      delta_quantity: delta
+    })
+  });
+  return result?.data?.item || null;
+}
+
+async function deleteInventoryItem(itemId) {
+  const id = String(itemId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const result = await request(`/api/v1/inventory/items/${id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId()
+    })
+  });
+  return result?.data || null;
+}
+
+async function bulkAdjustSelectedInventory(deltaQuantity) {
+  const visible = getVisibleInventoryItems();
+  const visibleIds = new Set(visible.map((i) => String(i.id)));
+  const selected = Array.from(inventorySelectedIds).filter((id) => visibleIds.has(String(id)));
+  if (selected.length === 0) {
+    return;
+  }
+
+  const addBtn = $("inventoryBulkAddBtn");
+  const delBtn = $("inventoryBulkDeleteBtn");
+  const clearBtn = $("inventoryBulkClearBtn");
+  const selectAll = $("inventorySelectAll");
+  if (addBtn) addBtn.disabled = true;
+  if (delBtn) delBtn.disabled = true;
+  if (clearBtn) clearBtn.disabled = true;
+  if (selectAll) selectAll.disabled = true;
+
+  try {
+    for (const id of selected) {
+      await adjustInventoryItemQuantity(id, deltaQuantity);
+    }
+    await refreshAll();
+    clearInventorySelection();
+  } finally {
+    syncInventoryBulkBar();
+  }
+}
+
+async function bulkDeleteSelectedInventory() {
+  const visible = getVisibleInventoryItems();
+  const visibleIds = new Set(visible.map((i) => String(i.id)));
+  const selected = Array.from(inventorySelectedIds).filter((id) => visibleIds.has(String(id)));
+  if (selected.length === 0) {
+    return;
+  }
+
+  const ok = confirm(`${t("btn_delete_selected")}: ${selected.length}`);
+  if (!ok) {
+    return;
+  }
+
+  const addBtn = $("inventoryBulkAddBtn");
+  const delBtn = $("inventoryBulkDeleteBtn");
+  const clearBtn = $("inventoryBulkClearBtn");
+  const selectAll = $("inventorySelectAll");
+  if (addBtn) addBtn.disabled = true;
+  if (delBtn) delBtn.disabled = true;
+  if (clearBtn) clearBtn.disabled = true;
+  if (selectAll) selectAll.disabled = true;
+
+  try {
+    for (const id of selected) {
+      await deleteInventoryItem(id);
+    }
+    await refreshAll();
+    clearInventorySelection();
+  } finally {
+    syncInventoryBulkBar();
+  }
 }
 
 function buildInventoryNode(item) {
   const tpl = $("inventoryItemTemplate");
   const node = tpl.content.firstElementChild.cloneNode(true);
+  node.dataset.itemId = String(item.id);
+
+  const selectEl = node.querySelector(".inventory-select");
+  if (selectEl) {
+    selectEl.checked = inventorySelectedIds.has(String(item.id));
+    selectEl.addEventListener("change", () => {
+      const id = String(item.id);
+      if (selectEl.checked) {
+        inventorySelectedIds.add(id);
+      } else {
+        inventorySelectedIds.delete(id);
+      }
+      syncInventoryBulkBar();
+    });
+  }
+
   node.querySelector(".name").textContent = ingredientLabel(item.ingredient_key, item.ingredient_name);
   node.querySelector(".meta").textContent = tf("meta_inventory_line", {
     qty: item.quantity,
@@ -3487,6 +3682,45 @@ function bindEvents() {
         return;
       }
       setInventoryFilterStorage(btn.dataset.storage, { persist: true });
+    });
+  }
+  if ($("inventorySelectAll")) {
+    $("inventorySelectAll").addEventListener("change", () => {
+      const visible = getVisibleInventoryItems();
+      const ids = visible.map((i) => String(i.id));
+      if ($("inventorySelectAll").checked) {
+        ids.forEach((id) => inventorySelectedIds.add(id));
+      } else {
+        ids.forEach((id) => inventorySelectedIds.delete(id));
+      }
+      syncInventoryBulkBar();
+    });
+  }
+  if ($("inventoryBulkAddBtn")) {
+    $("inventoryBulkAddBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await bulkAdjustSelectedInventory(1);
+      } catch (err) {
+        setGlobalError(err?.message || String(err));
+      }
+    });
+  }
+  if ($("inventoryBulkDeleteBtn")) {
+    $("inventoryBulkDeleteBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await bulkDeleteSelectedInventory();
+      } catch (err) {
+        setGlobalError(err?.message || String(err));
+      }
+    });
+  }
+  if ($("inventoryBulkClearBtn")) {
+    $("inventoryBulkClearBtn").addEventListener("click", (event) => {
+      event.preventDefault();
+      clearInventorySelection();
+      renderInventoryFromCache();
     });
   }
   if ($("captureVisionImageInput")) {

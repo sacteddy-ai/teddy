@@ -166,6 +166,83 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
   return { updated_items: updated, updated_item: updatedItem, removed };
 }
 
+export async function invokeInventoryQuantityAdjustment(context, userId, itemId, deltaQuantity) {
+  const invKey = inventoryKey(userId);
+  const allItems = await getArray(context.env, invKey);
+
+  let found = false;
+  let updatedItem = null;
+  const updated = [];
+  const now = nowIso();
+
+  const delta = Number(deltaQuantity);
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error("delta_quantity must be a non-zero number.");
+  }
+
+  for (const item of allItems) {
+    if (item?.id !== itemId) {
+      updated.push(item);
+      continue;
+    }
+
+    found = true;
+    const nextQty = Math.round((Number(item.quantity || 0) + delta) * 100) / 100;
+    if (nextQty <= 0) {
+      // Treat as removal.
+      continue;
+    }
+
+    updatedItem = {
+      ...item,
+      quantity: nextQty,
+      updated_at: now
+    };
+    updated.push(updatedItem);
+  }
+
+  if (!found) {
+    throw new Error("inventory item not found.");
+  }
+
+  await putArray(context.env, invKey, updated);
+  return { updated_item: updatedItem, removed: !updatedItem };
+}
+
+export async function deleteInventoryItemRecord(context, userId, itemId) {
+  const invKey = inventoryKey(userId);
+  const allItems = await getArray(context.env, invKey);
+
+  let found = false;
+  let removedItem = null;
+  const updated = [];
+
+  for (const item of allItems) {
+    if (item?.id === itemId) {
+      found = true;
+      removedItem = item;
+      continue;
+    }
+    updated.push(item);
+  }
+
+  if (!found) {
+    throw new Error("inventory item not found.");
+  }
+
+  await putArray(context.env, invKey, updated);
+
+  const nKey = notificationsKey(userId);
+  const notifications = await getArray(context.env, nKey);
+  const filtered = (notifications || []).filter((n) => n && String(n.inventory_item_id) !== String(itemId));
+  const removedNotificationCount = Math.max(0, (notifications || []).length - filtered.length);
+  if (removedNotificationCount > 0) {
+    await putArray(context.env, nKey, filtered);
+  }
+
+  return { removed_item: removedItem, removed_notification_count: removedNotificationCount };
+}
+
 export async function recomputeInventoryStatuses(context, userId) {
   const invKey = inventoryKey(userId);
   const items = await getArray(context.env, invKey);
@@ -191,4 +268,3 @@ export async function recomputeInventoryStatuses(context, userId) {
 
   return normalized;
 }
-

@@ -302,6 +302,18 @@
           <button type="button" class="seg-btn" data-storage="frozen" data-i18n="storage_frozen">frozen</button>
           <button type="button" class="seg-btn" data-storage="room" data-i18n="storage_room">room</button>
         </div>
+        <div id="inventoryBulkBar" class="bulk-bar" aria-label="Inventory bulk actions">
+          <label class="checkline bulk-check">
+            <input id="inventorySelectAll" type="checkbox">
+            <span data-i18n="btn_select_all">Select all</span>
+          </label>
+          <span id="inventorySelectedCount" class="muted"></span>
+          <div class="bulk-actions">
+            <button id="inventoryBulkAddBtn" class="btn tiny" type="button" data-i18n="btn_add_1">Add 1</button>
+            <button id="inventoryBulkDeleteBtn" class="btn tiny warn" type="button" data-i18n="btn_delete_selected">Delete</button>
+            <button id="inventoryBulkClearBtn" class="btn tiny ghost" type="button" data-i18n="btn_clear_selection">Clear</button>
+          </div>
+        </div>
         <div id="inventoryList" class="list"></div>
       </article>
 
@@ -336,7 +348,10 @@
   <template id="inventoryItemTemplate">
     <div class="item inventory-item">
       <div class="item-main">
-        <strong class="name"></strong>
+        <div class="inventory-title-row">
+          <input class="inventory-select" type="checkbox" aria-label="Select inventory item">
+          <strong class="name"></strong>
+        </div>
         <span class="meta"></span>
       </div>
       <div class="item-side">

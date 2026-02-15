@@ -630,6 +630,57 @@ textarea {
   font-size: 0.9rem;
 }
 
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 252, 0.8);
+  margin: 10px 0;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.bulk-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-select {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent-2);
+}
+
+body.easy .bulk-bar {
+  padding: 12px;
+}
+
+body.easy .bulk-actions .btn {
+  padding: 12px 14px;
+  font-size: 0.98rem;
+  border-radius: 14px;
+}
+
+body.easy .inventory-select {
+  width: 28px;
+  height: 28px;
+}
+
 .empty {
   color: var(--muted);
   border: 1px dashed var(--line);
