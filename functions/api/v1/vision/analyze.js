@@ -70,7 +70,10 @@ export async function onRequest(context) {
             ingredient_key: mention.ingredient_key,
             ingredient_name: mention.ingredient_name || mention.ingredient_key,
             confidence: "medium",
-            bbox
+            bbox,
+            quantity: 1,
+            unit: "ea",
+            draft_applied: true
           };
         }
         const fallbackKey = normalizeIngredientKey(normalized || rawName);
@@ -80,7 +83,10 @@ export async function onRequest(context) {
           ingredient_key: fallbackKey,
           ingredient_name: normalized || rawName || fallbackKey,
           confidence: "low",
-          bbox
+          bbox,
+          quantity: 1,
+          unit: "ea",
+          draft_applied: true
         };
       });
       let parseResult = parseConversationCommands(textHintInput, detectedItems, aliasLookup);

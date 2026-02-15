@@ -194,6 +194,10 @@
           <div id="visionObjectPanel" class="vision-object-panel" hidden>
             <h3 class="subhead" data-i18n="vision_objects_title">Object Labels</h3>
             <p id="visionObjectHint" class="muted" data-i18n="vision_objects_hint">Tap a box to select. Edit labels if needed.</p>
+            <div class="inline-actions vision-object-actions">
+              <button id="visionAddBoxBtn" class="btn ghost" type="button" data-i18n="btn_add_box">Add Box</button>
+              <button id="visionDeleteBoxBtn" class="btn warn" type="button" data-i18n="btn_delete_box">Delete</button>
+            </div>
             <div class="vision-stage" id="visionStage">
               <img id="visionPreviewImage" alt="" loading="lazy">
               <canvas id="visionPreviewCanvas"></canvas>

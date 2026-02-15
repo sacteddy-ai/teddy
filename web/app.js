@@ -22,6 +22,9 @@ let visionLastImageDataUrl = "";
 let visionObjectsCache = [];
 let visionSelectedObjectId = "";
 let visionRelabelTargetId = "";
+let visionEditMode = "select"; // select | add
+let visionPointerState = null;
+let visionTempBbox = null;
 
 let browserSpeechRecognizer = null;
 let browserSpeechRunning = false;
@@ -110,6 +113,8 @@ const I18N = {
     btn_cancel_label: "Cancel",
     vision_badge_ok: "ok",
     vision_badge_low: "check",
+    btn_add_box: "Add Box",
+    btn_delete_box: "Delete",
     live_camera_summary: "Live Camera (experimental)",
     btn_start_camera: "Start Camera",
     btn_stop_camera: "Stop Camera",
@@ -259,6 +264,8 @@ const I18N = {
     btn_cancel_label: "취소",
     vision_badge_ok: "확신",
     vision_badge_low: "확인",
+    btn_add_box: "박스 추가",
+    btn_delete_box: "삭제",
     live_camera_summary: "라이브 카메라 (실험)",
     btn_start_camera: "카메라 시작",
     btn_stop_camera: "카메라 중지",
@@ -668,6 +675,9 @@ function clearVisionObjectPreview() {
   visionObjectsCache = [];
   visionSelectedObjectId = "";
   visionRelabelTargetId = "";
+  visionEditMode = "select";
+  visionPointerState = null;
+  visionTempBbox = null;
 
   const panel = $("visionObjectPanel");
   if (panel) {
@@ -697,6 +707,58 @@ function setVisionObjectsPreview(imageDataUrl, objects) {
     visionSelectedObjectId = String(visionObjectsCache[0]?.id || "").trim() || "";
   }
   renderVisionObjectPreview();
+}
+
+function setVisionEditMode(nextMode) {
+  const mode = String(nextMode || "").trim().toLowerCase();
+  visionEditMode = mode === "add" ? "add" : "select";
+  visionTempBbox = null;
+
+  const addBtn = $("visionAddBoxBtn");
+  if (addBtn) {
+    addBtn.classList.toggle("active", visionEditMode === "add");
+  }
+}
+
+function getSelectedVisionObject() {
+  const id = String(visionSelectedObjectId || "").trim();
+  if (!id) {
+    return null;
+  }
+  return (visionObjectsCache || []).find((o) => String(o?.id || "").trim() === id) || null;
+}
+
+function openVisionObjectEdit(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return;
+  }
+  const list = $("visionObjectList");
+  if (!list) {
+    return;
+  }
+  let node = null;
+  list.querySelectorAll(".vision-object").forEach((n) => {
+    if (node) {
+      return;
+    }
+    const oid = String(n?.dataset?.objectId || "");
+    if (oid === id) {
+      node = n;
+    }
+  });
+  if (!node) {
+    return;
+  }
+  const row = node.querySelector(".vision-edit-row");
+  const input = node.querySelector(".vision-edit-input");
+  if (row) {
+    row.hidden = false;
+  }
+  if (input) {
+    input.focus();
+    input.select?.();
+  }
 }
 
 function getVisionObjectDisplayLabel(obj) {
@@ -803,8 +865,9 @@ function drawVisionOverlay() {
     ctx.fillText(text, x + padX, Math.max(12, y - 5));
   };
 
-  for (let i = 0; i < (visionObjectsCache || []).length; i += 1) {
-    const obj = visionObjectsCache[i];
+  const allObjects = Array.isArray(visionObjectsCache) ? visionObjectsCache : [];
+  for (let i = 0; i < allObjects.length; i += 1) {
+    const obj = allObjects[i];
     const bbox = obj?.bbox;
     if (!bbox) {
       continue;
@@ -833,6 +896,38 @@ function drawVisionOverlay() {
     const label = getVisionObjectDisplayLabel(obj);
     const text = `${i + 1} ${label}`.trim();
     drawLabel(x, y, text, "#fff");
+
+    if (selected) {
+      // Corner handles for resizing.
+      const hs = 8;
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      const corners = [
+        [x, y],
+        [x + w, y],
+        [x, y + h],
+        [x + w, y + h]
+      ];
+      for (const [cx, cy] of corners) {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+        ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+      }
+    }
+  }
+
+  if (visionTempBbox) {
+    const bx = Number(visionTempBbox.x);
+    const by = Number(visionTempBbox.y);
+    const bw = Number(visionTempBbox.w);
+    const bh = Number(visionTempBbox.h);
+    if ([bx, by, bw, bh].every(Number.isFinite)) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(bx * rect.width, by * rect.height, bw * rect.width, bh * rect.height);
+      ctx.setLineDash([]);
+    }
   }
 }
 
@@ -882,6 +977,7 @@ async function replaceVisionObjectLabel(objectId, newLabel, options = {}) {
     obj.ingredient_name = rep.to_ingredient_name;
   }
   obj.confidence = "medium";
+  obj.draft_applied = true;
 
   const locUpdated = Number(result?.data?.localization?.updated_count || 0);
   if (locUpdated > 0) {
@@ -961,6 +1057,11 @@ function renderVisionObjectPreview(options = {}) {
     drawVisionOverlay();
   }
 
+  const addBtn = $("visionAddBoxBtn");
+  if (addBtn) {
+    addBtn.classList.toggle("active", visionEditMode === "add");
+  }
+
   const list = $("visionObjectList");
   if (list) {
     list.innerHTML = "";
@@ -991,6 +1092,7 @@ function renderVisionObjectPreview(options = {}) {
           <span class="badge ${badgeClass}">${badgeText}</span>
           <button type="button" class="btn tiny ghost edit-btn">${t("btn_edit_label")}</button>
           <button type="button" class="btn tiny ghost edit-voice-btn">${t("btn_edit_label_voice")}</button>
+          <button type="button" class="btn tiny warn delete-btn">${t("btn_delete_box")}</button>
         </div>
       `;
 
@@ -1061,11 +1163,168 @@ function renderVisionObjectPreview(options = {}) {
         });
       }
 
+      const deleteBtn = node.querySelector(".delete-btn");
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const ok = confirm(`${t("btn_delete_box")}: ${label}?`);
+          if (!ok) {
+            return;
+          }
+          deleteBtn.disabled = true;
+          try {
+            await deleteVisionObject(obj?.id);
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+          } finally {
+            deleteBtn.disabled = false;
+          }
+        });
+      }
+
       list.appendChild(node);
     });
   }
 
   syncVisionObjectSelectionUI();
+}
+
+function buildCustomVisionObject(bbox) {
+  const id = `custom_${(crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`)}`;
+  const placeholder = currentLang === "ko" ? "새 항목" : "New item";
+  return {
+    id,
+    name: placeholder,
+    ingredient_key: `custom_${id}`,
+    ingredient_name: placeholder,
+    confidence: "low",
+    bbox,
+    quantity: 1,
+    unit: "ea",
+    draft_applied: false
+  };
+}
+
+function clamp(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, n));
+}
+
+function normalizeBboxFromPoints(x1, y1, x2, y2) {
+  const ax = clamp(Math.min(x1, x2), 0, 1);
+  const ay = clamp(Math.min(y1, y2), 0, 1);
+  const bx = clamp(Math.max(x1, x2), 0, 1);
+  const by = clamp(Math.max(y1, y2), 0, 1);
+  const w = Math.max(0, bx - ax);
+  const h = Math.max(0, by - ay);
+  if (w < 0.01 || h < 0.01) {
+    return null;
+  }
+  return { x: ax, y: ay, w, h };
+}
+
+function getHandleAtPoint(obj, nx, ny, rect) {
+  if (!obj?.bbox || !rect?.width || !rect?.height) {
+    return null;
+  }
+  const bbox = obj.bbox;
+  const x = Number(bbox.x);
+  const y = Number(bbox.y);
+  const w = Number(bbox.w);
+  const h = Number(bbox.h);
+  if (![x, y, w, h].every(Number.isFinite)) {
+    return null;
+  }
+
+  const px = nx * rect.width;
+  const py = ny * rect.height;
+  const cx1 = x * rect.width;
+  const cy1 = y * rect.height;
+  const cx2 = (x + w) * rect.width;
+  const cy2 = (y + h) * rect.height;
+
+  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const threshold = 14; // px
+
+  const corners = [
+    { handle: "nw", x: cx1, y: cy1 },
+    { handle: "ne", x: cx2, y: cy1 },
+    { handle: "sw", x: cx1, y: cy2 },
+    { handle: "se", x: cx2, y: cy2 }
+  ];
+  let best = null;
+  let bestD = Infinity;
+  for (const c of corners) {
+    const d = dist(px, py, c.x, c.y);
+    if (d <= threshold && d < bestD) {
+      bestD = d;
+      best = c.handle;
+    }
+  }
+  return best;
+}
+
+function updateObjectBbox(objId, bbox) {
+  const id = String(objId || "").trim();
+  if (!id || !bbox) {
+    return;
+  }
+  const idx = (visionObjectsCache || []).findIndex((o) => String(o?.id || "") === id);
+  if (idx < 0) {
+    return;
+  }
+  visionObjectsCache[idx] = {
+    ...visionObjectsCache[idx],
+    bbox: {
+      x: Math.round(Number(bbox.x) * 10000) / 10000,
+      y: Math.round(Number(bbox.y) * 10000) / 10000,
+      w: Math.round(Number(bbox.w) * 10000) / 10000,
+      h: Math.round(Number(bbox.h) * 10000) / 10000
+    }
+  };
+}
+
+async function deleteVisionObject(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return;
+  }
+  const obj = (visionObjectsCache || []).find((o) => String(o?.id || "") === id) || null;
+  if (!obj) {
+    return;
+  }
+
+  const sessionId = getCaptureSessionId();
+  if (sessionId && obj.draft_applied && obj.ingredient_key) {
+    // Remove 1 unit from draft to match object deletion.
+    const result = await request(`/api/v1/capture/sessions/${sessionId}/draft/remove`, {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: getUserId(),
+        ingredient_key: obj.ingredient_key,
+        quantity: obj.quantity ?? 1,
+        unit: obj.unit || "ea",
+        remove_all: false
+      })
+    });
+    const capture = result?.data?.capture || null;
+    if (capture) {
+      renderCaptureDraft(capture);
+    }
+    await loadReviewQueue();
+  }
+
+  visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== id);
+  if (visionSelectedObjectId === id) {
+    visionSelectedObjectId = String(visionObjectsCache[0]?.id || "");
+  }
+  renderVisionObjectPreview({ skipImageReload: true });
 }
 
 function setCameraStatus(message) {
@@ -3126,7 +3385,8 @@ function bindEvents() {
     });
   }
   if ($("visionPreviewCanvas")) {
-    $("visionPreviewCanvas").addEventListener("click", (event) => {
+    const canvas = $("visionPreviewCanvas");
+    const onDown = (event) => {
       const img = $("visionPreviewImage");
       if (!img) {
         return;
@@ -3135,11 +3395,221 @@ function bindEvents() {
       if (!rect.width || !rect.height) {
         return;
       }
-      const x = (event.clientX - rect.left) / rect.width;
-      const y = (event.clientY - rect.top) / rect.height;
-      const obj = findVisionObjectAt(x, y);
-      if (obj?.id) {
-        selectVisionObject(obj.id);
+
+      const nx = (event.clientX - rect.left) / rect.width;
+      const ny = (event.clientY - rect.top) / rect.height;
+
+      if (visionEditMode === "add") {
+        visionPointerState = {
+          pointerId: event.pointerId,
+          action: "draw",
+          startNx: clamp(nx, 0, 1),
+          startNy: clamp(ny, 0, 1)
+        };
+        visionTempBbox = { x: visionPointerState.startNx, y: visionPointerState.startNy, w: 0, h: 0 };
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch {}
+        drawVisionOverlay();
+        event.preventDefault();
+        return;
+      }
+
+      const hit = findVisionObjectAt(nx, ny);
+      if (hit?.id) {
+        selectVisionObject(hit.id);
+      }
+
+      const selected = getSelectedVisionObject();
+      const handle = getHandleAtPoint(selected, nx, ny, rect);
+      if (selected && handle) {
+        visionPointerState = {
+          pointerId: event.pointerId,
+          action: "resize",
+          handle,
+          objectId: selected.id,
+          startNx: clamp(nx, 0, 1),
+          startNy: clamp(ny, 0, 1),
+          startBbox: { ...selected.bbox }
+        };
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch {}
+        event.preventDefault();
+        return;
+      }
+
+      if (selected?.bbox) {
+        const bb = selected.bbox;
+        const x = Number(bb.x);
+        const y = Number(bb.y);
+        const w = Number(bb.w);
+        const h = Number(bb.h);
+        if ([x, y, w, h].every(Number.isFinite) && nx >= x && ny >= y && nx <= x + w && ny <= y + h) {
+          visionPointerState = {
+            pointerId: event.pointerId,
+            action: "move",
+            objectId: selected.id,
+            startNx: clamp(nx, 0, 1),
+            startNy: clamp(ny, 0, 1),
+            startBbox: { ...selected.bbox }
+          };
+          try {
+            canvas.setPointerCapture(event.pointerId);
+          } catch {}
+          event.preventDefault();
+        }
+      }
+    };
+
+    const onMove = (event) => {
+      const img = $("visionPreviewImage");
+      if (!img || !visionPointerState) {
+        return;
+      }
+      if (event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      const rect = img.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const nx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const ny = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+
+      if (visionPointerState.action === "draw") {
+        const bb = normalizeBboxFromPoints(visionPointerState.startNx, visionPointerState.startNy, nx, ny);
+        visionTempBbox = bb || null;
+        drawVisionOverlay();
+        event.preventDefault();
+        return;
+      }
+
+      if (visionPointerState.action === "move") {
+        const start = visionPointerState.startBbox;
+        const dx = nx - visionPointerState.startNx;
+        const dy = ny - visionPointerState.startNy;
+        const x = clamp(Number(start.x) + dx, 0, 1 - Number(start.w));
+        const y = clamp(Number(start.y) + dy, 0, 1 - Number(start.h));
+        updateObjectBbox(visionPointerState.objectId, { x, y, w: start.w, h: start.h });
+        drawVisionOverlay();
+        event.preventDefault();
+        return;
+      }
+
+      if (visionPointerState.action === "resize") {
+        const start = visionPointerState.startBbox;
+        const x1 = Number(start.x);
+        const y1 = Number(start.y);
+        const x2 = x1 + Number(start.w);
+        const y2 = y1 + Number(start.h);
+
+        let ax = x1;
+        let ay = y1;
+        let bx = x2;
+        let by = y2;
+
+        switch (visionPointerState.handle) {
+          case "nw":
+            ax = nx;
+            ay = ny;
+            break;
+          case "ne":
+            bx = nx;
+            ay = ny;
+            break;
+          case "sw":
+            ax = nx;
+            by = ny;
+            break;
+          case "se":
+            bx = nx;
+            by = ny;
+            break;
+        }
+
+        const bb = normalizeBboxFromPoints(ax, ay, bx, by);
+        if (bb) {
+          updateObjectBbox(visionPointerState.objectId, bb);
+          drawVisionOverlay();
+        }
+        event.preventDefault();
+      }
+    };
+
+    const onUp = (event) => {
+      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      const action = visionPointerState.action;
+      visionPointerState = null;
+
+      if (action === "draw") {
+        const bb = visionTempBbox;
+        visionTempBbox = null;
+        setVisionEditMode("select");
+        if (bb) {
+          const obj = buildCustomVisionObject(bb);
+          visionObjectsCache = (visionObjectsCache || []).concat([obj]);
+          visionSelectedObjectId = obj.id;
+          renderVisionObjectPreview({ skipImageReload: true });
+          openVisionObjectEdit(obj.id);
+        } else {
+          drawVisionOverlay();
+        }
+      }
+      event.preventDefault();
+    };
+
+    const onCancel = (event) => {
+      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      visionPointerState = null;
+      visionTempBbox = null;
+      setVisionEditMode("select");
+      drawVisionOverlay();
+    };
+
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+  }
+  if ($("visionAddBoxBtn")) {
+    $("visionAddBoxBtn").addEventListener("click", (event) => {
+      event.preventDefault();
+      const next = visionEditMode === "add" ? "select" : "add";
+      setVisionEditMode(next);
+      drawVisionOverlay();
+    });
+  }
+  if ($("visionDeleteBoxBtn")) {
+    $("visionDeleteBoxBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      const obj = getSelectedVisionObject();
+      if (!obj) {
+        return;
+      }
+      const label = getVisionObjectDisplayLabel(obj);
+      const ok = confirm(`${t("btn_delete_box")}: ${label}?`);
+      if (!ok) {
+        return;
+      }
+      const btn = $("visionDeleteBoxBtn");
+      if (btn) {
+        btn.disabled = true;
+      }
+      try {
+        await deleteVisionObject(obj.id);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        setGlobalError(msg);
+        setCaptureError(msg);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+        }
       }
     });
   }

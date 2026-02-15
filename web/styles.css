@@ -250,6 +250,20 @@ h1 {
   width: 100%;
   height: 100%;
   cursor: pointer;
+  touch-action: none;
+}
+
+.vision-object-actions {
+  margin: 8px 0 10px;
+}
+
+.vision-object-actions .btn.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.vision-object-actions .btn.warn {
+  color: #fff;
 }
 
 .vision-object.selected {

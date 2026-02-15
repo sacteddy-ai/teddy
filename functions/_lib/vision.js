@@ -61,7 +61,7 @@ export async function detectIngredientsFromImage(context, imageDataUrl, textHint
     "{\"detected_objects\": [{\"name\": \"...\", \"bbox\": {\"x\": 0.1, \"y\": 0.2, \"w\": 0.3, \"h\": 0.4}}]}",
     "Rules:",
     "- Use short ingredient names (not brands).",
-    "- No duplicates.",
+    "- If there are multiple instances of the same item, you may include duplicates as separate objects.",
     "- Max 12 items.",
     "- If uncertain, omit the item."
   ];
@@ -125,7 +125,6 @@ export async function detectIngredientsFromImage(context, imageDataUrl, textHint
   const rawObjects = Array.isArray(obj?.detected_objects) ? obj.detected_objects : [];
   const detectedObjects = [];
   const detectedItems = [];
-  const seen = new Set();
 
   for (const raw of rawObjects) {
     const name = raw?.name ? String(raw.name).trim() : "";
@@ -136,12 +135,6 @@ export async function detectIngredientsFromImage(context, imageDataUrl, textHint
     if (!bbox) {
       continue;
     }
-
-    const key = name.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
 
     detectedObjects.push({ name, bbox });
     detectedItems.push(name);
