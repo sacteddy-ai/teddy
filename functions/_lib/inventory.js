@@ -1,6 +1,6 @@
 import { getExpirationSuggestion, getItemStatus } from "./expiration.js";
 import { newExpirationNotifications } from "./notifications.js";
-import { nowIso, parseIsoDateToEpochDay, todayEpochDay, epochDayToIso } from "./util.js";
+import { nowIso, parseIsoDateToEpochDay, todayEpochDay, epochDayToIso, normalizeIngredientKey } from "./util.js";
 import { getArray, putArray, inventoryKey, notificationsKey } from "./store.js";
 
 export function normalizeInventoryStatus(item, asOfEpochDay = null) {
@@ -43,7 +43,13 @@ export async function createInventoryItemRecord(context, params) {
     product_shelf_life_days: productShelfLifeDays
   });
 
+  const forcedKeyRaw = params.ingredient_key ? String(params.ingredient_key).trim() : "";
+  const forcedKey = forcedKeyRaw ? normalizeIngredientKey(forcedKeyRaw) : "";
+
   let resolvedIngredientKey = suggestion.ingredient_key;
+  if (forcedKey) {
+    resolvedIngredientKey = forcedKey;
+  }
   if (ingredientKeyHint && (!resolvedIngredientKey || resolvedIngredientKey === "default_perishable")) {
     resolvedIngredientKey = ingredientKeyHint;
   }
@@ -163,6 +169,16 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
 
   await putArray(context.env, invKey, updated);
 
+  if (removed) {
+    const nKey = notificationsKey(userId);
+    const notifications = await getArray(context.env, nKey);
+    const filtered = (notifications || []).filter((n) => n && String(n.inventory_item_id) !== String(itemId));
+    const removedNotificationCount = Math.max(0, (notifications || []).length - filtered.length);
+    if (removedNotificationCount > 0) {
+      await putArray(context.env, nKey, filtered);
+    }
+  }
+
   return { updated_items: updated, updated_item: updatedItem, removed };
 }
 
@@ -241,6 +257,251 @@ export async function deleteInventoryItemRecord(context, userId, itemId) {
   }
 
   return { removed_item: removedItem, removed_notification_count: removedNotificationCount };
+}
+
+function parseExpirationEpochDay(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    return parseIsoDateToEpochDay(raw.slice(0, 10));
+  } catch {
+    return null;
+  }
+}
+
+function coercePositiveNumber(value, fallback = 1.0) {
+  const n = value === null || value === undefined ? fallback : Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    return fallback;
+  }
+  return Math.round(n * 100) / 100;
+}
+
+export async function upsertInventoryItemRecordByIngredientKey(context, params) {
+  const userId = String(params.user_id || "demo-user").trim() || "demo-user";
+  const ingredientKeyRaw = String(params.ingredient_key || "").trim();
+  const ingredientKey = normalizeIngredientKey(ingredientKeyRaw);
+  if (!ingredientKey) {
+    throw new Error("ingredient_key is required.");
+  }
+
+  const ingredientName = String(params.ingredient_name || ingredientKey).trim() || ingredientKey;
+  const purchasedAt = String(params.purchased_at || "").trim();
+  if (!purchasedAt) {
+    throw new Error("purchased_at is required.");
+  }
+
+  const storageType = String(params.storage_type || "refrigerated").trim() || "refrigerated";
+  const unit = String(params.unit || "ea").trim() || "ea";
+  const quantity = coercePositiveNumber(params.quantity, 1.0);
+
+  const invKey = inventoryKey(userId);
+  const items = await getArray(context.env, invKey);
+
+  const purchaseDate = purchasedAt.slice(0, 10);
+  let bestIdx = -1;
+  let bestUpdatedAt = "";
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (!item) {
+      continue;
+    }
+    if (normalizeIngredientKey(item.ingredient_key || "") !== ingredientKey) {
+      continue;
+    }
+    if (String(item.storage_type || "") !== storageType) {
+      continue;
+    }
+    if (String(item.unit || "ea") !== unit) {
+      continue;
+    }
+    const itemPurchased = String(item.purchased_at || "").slice(0, 10);
+    if (itemPurchased !== purchaseDate) {
+      continue;
+    }
+
+    const ua = item.updated_at ? String(item.updated_at) : "";
+    if (bestIdx < 0 || String(ua).localeCompare(bestUpdatedAt) > 0) {
+      bestIdx = i;
+      bestUpdatedAt = ua;
+    }
+  }
+
+  if (bestIdx >= 0) {
+    const now = nowIso();
+    const existing = items[bestIdx];
+    const nextQty = Math.round((Number(existing.quantity || 0) + quantity) * 100) / 100;
+    const mergedItem = {
+      ...existing,
+      quantity: nextQty,
+      updated_at: now
+    };
+    items[bestIdx] = mergedItem;
+    await putArray(context.env, invKey, items);
+    return { item: mergedItem, merged: true, notifications: [] };
+  }
+
+  const createResult = await createInventoryItemRecord(context, {
+    user_id: userId,
+    ingredient_name: ingredientName,
+    ingredient_key: ingredientKey,
+    purchased_at: purchasedAt,
+    storage_type: storageType,
+    quantity,
+    unit
+  });
+  return { item: createResult.item, merged: false, notifications: createResult.notifications || [] };
+}
+
+export async function consumeInventoryByIngredientKey(context, userId, ingredientKeyInput, params = {}) {
+  const uid = String(userId || "demo-user").trim() || "demo-user";
+  const ingredientKey = normalizeIngredientKey(String(ingredientKeyInput || "").trim());
+  if (!ingredientKey) {
+    throw new Error("ingredient_key is required.");
+  }
+
+  const preferredStorage = params?.storage_type ? String(params.storage_type).trim() : "";
+  const removeAll = params?.remove_all === true;
+  let remaining = removeAll ? Infinity : coercePositiveNumber(params?.consumed_quantity, 1.0);
+
+  const invKey = inventoryKey(uid);
+  const items = await getArray(context.env, invKey);
+
+  const matching = [];
+  for (const item of items) {
+    if (!item) {
+      continue;
+    }
+    if (normalizeIngredientKey(item.ingredient_key || "") !== ingredientKey) {
+      continue;
+    }
+    matching.push(item);
+  }
+
+  if (matching.length === 0) {
+    return { matched_count: 0, consumed_quantity: 0, removed_item_ids: [], updated_items: items };
+  }
+
+  let effectiveMatches = matching;
+  if (preferredStorage) {
+    const preferred = matching.filter((i) => String(i.storage_type || "") === preferredStorage);
+    if (preferred.length > 0) {
+      effectiveMatches = preferred;
+    }
+  }
+
+  // Prefer consuming items that expire sooner.
+  const orderedIds = effectiveMatches
+    .map((i) => ({
+      id: String(i.id),
+      exp: parseExpirationEpochDay(i.suggested_expiration_date),
+      purchased_at: String(i.purchased_at || ""),
+      created_at: String(i.created_at || "")
+    }))
+    .sort((a, b) => {
+      const ea = a.exp === null ? Infinity : a.exp;
+      const eb = b.exp === null ? Infinity : b.exp;
+      if (ea !== eb) {
+        return ea - eb;
+      }
+      const pa = a.purchased_at || "";
+      const pb = b.purchased_at || "";
+      if (pa !== pb) {
+        return String(pa).localeCompare(String(pb));
+      }
+      return String(a.created_at).localeCompare(String(b.created_at));
+    })
+    .map((x) => x.id);
+
+  const now = nowIso();
+  const idToItem = new Map();
+  for (const item of items) {
+    const id = item?.id ? String(item.id) : "";
+    if (id && !idToItem.has(id)) {
+      idToItem.set(id, item);
+    }
+  }
+
+  const removedIds = new Set();
+  const modsById = new Map(); // id -> { remove: bool, quantity?: number }
+  let consumed = 0;
+
+  for (const id of orderedIds) {
+    const item = idToItem.get(String(id)) || null;
+    if (!item) {
+      continue;
+    }
+
+    if (removeAll) {
+      modsById.set(String(id), { remove: true });
+      removedIds.add(String(id));
+      continue;
+    }
+
+    if (remaining <= 0) {
+      break;
+    }
+
+    const qty = Number(item.quantity || 0);
+    const take = Math.min(qty, remaining);
+    remaining = Math.round((remaining - take) * 100) / 100;
+    consumed = Math.round((consumed + take) * 100) / 100;
+
+    const nextQty = Math.round((qty - take) * 100) / 100;
+    if (nextQty <= 0) {
+      modsById.set(String(id), { remove: true });
+      removedIds.add(String(id));
+      continue;
+    }
+
+    modsById.set(String(id), { remove: false, quantity: nextQty });
+  }
+
+  const updated = [];
+  for (const item of items) {
+    const id = item?.id ? String(item.id) : "";
+    if (!id) {
+      updated.push(item);
+      continue;
+    }
+
+    const mod = modsById.get(id) || null;
+    if (!mod) {
+      updated.push(item);
+      continue;
+    }
+    if (mod.remove) {
+      continue;
+    }
+
+    updated.push({
+      ...item,
+      quantity: Number(mod.quantity || item.quantity || 0),
+      updated_at: now
+    });
+  }
+
+  await putArray(context.env, invKey, updated);
+
+  if (removedIds.size > 0) {
+    const nKey = notificationsKey(uid);
+    const notifications = await getArray(context.env, nKey);
+    const filtered = (notifications || []).filter((n) => n && !removedIds.has(String(n.inventory_item_id)));
+    const removedNotificationCount = Math.max(0, (notifications || []).length - filtered.length);
+    if (removedNotificationCount > 0) {
+      await putArray(context.env, nKey, filtered);
+    }
+  }
+
+  return {
+    matched_count: effectiveMatches.length,
+    consumed_quantity: removeAll ? null : consumed,
+    removed_item_ids: Array.from(removedIds),
+    updated_items: updated
+  };
 }
 
 export async function recomputeInventoryStatuses(context, userId) {

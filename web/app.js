@@ -67,6 +67,7 @@ const I18N = {
       "Use this when the dashboard is hosted separately (e.g. Cloudflare Pages) and the API runs elsewhere (e.g. Tunnel). Enable CORS on the API server with <code>ENABLE_CORS=1</code>.",
     capture_storage_help: "Applies when finalizing to inventory.",
     word_none: "none",
+    word_new_item: "New item",
     stat_total: "Total",
     stat_fresh: "Fresh",
     stat_expiring_soon: "Expiring Soon",
@@ -171,6 +172,7 @@ const I18N = {
     empty_review_queue: "No pending review items.",
     capture_error_need_text_or_vision: "Type a message or provide vision items.",
     err_no_capture_session: "No capture session to finalize.",
+    err_vision_label_required: "Name the new box before finalizing.",
     capture_error_no_confirmed: "No confirmed ingredient yet. {count} phrase(s) need confirmation below.",
     capture_error_none_detected:
       "No ingredient was detected from this message. Add names explicitly or use Vision Items.",
@@ -195,6 +197,9 @@ const I18N = {
     voice_draft_updated_ready: "Added to draft. Review and tap Finalize to save.",
     voice_draft_edit_hint: "Say the new name, or say \"delete\" to remove it.",
     voice_draft_update_failed: "Draft update failed: {msg}",
+    voice_inventory_updated: "Inventory updated: {summary}",
+    voice_inventory_no_items: "I couldn't find any food items in that message.",
+    voice_inventory_update_failed: "Inventory update failed: {msg}",
     voice_saved: "Saved to inventory.",
     meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
     meta_inventory_line: "{qty} {unit} | {storage} | exp {exp} | D{days}",
@@ -226,6 +231,7 @@ const I18N = {
       "대시보드는 Pages에, API는 다른 곳(예: 터널)에 띄웠을 때 사용하세요. API 서버에서 CORS를 <code>ENABLE_CORS=1</code> 로 켜야 합니다.",
     capture_storage_help: "인벤토리로 확정할 때 이 보관 방식으로 저장됩니다.",
     word_none: "없음",
+    word_new_item: "새 항목",
     stat_total: "전체",
     stat_fresh: "신선",
     stat_expiring_soon: "임박",
@@ -330,6 +336,7 @@ const I18N = {
     empty_review_queue: "확인할 항목이 없습니다.",
     capture_error_need_text_or_vision: "메시지를 입력하거나 비전 아이템을 넣어주세요.",
     err_no_capture_session: "확정할 캡처 세션이 없습니다.",
+    err_vision_label_required: "새 박스 이름을 입력한 뒤 확정해주세요.",
     capture_error_no_confirmed: "아직 확정된 식재료가 없어요. 아래에서 {count}개를 확인해주세요.",
     capture_error_none_detected: "이 메시지에서 식재료를 찾지 못했어요. 이름을 더 명확히 쓰거나 비전을 사용해보세요.",
     capture_error_need_confirmation: "아래에서 {count}개를 더 확인해야 합니다.",
@@ -353,6 +360,9 @@ const I18N = {
     voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
     voice_draft_edit_hint: "새 이름을 말하거나 '삭제'라고 말하면 이 항목이 사라져요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
+    voice_inventory_updated: "인벤토리 업데이트: {summary}",
+    voice_inventory_no_items: "이 문장에서 식재료를 찾지 못했어요.",
+    voice_inventory_update_failed: "인벤토리 업데이트 실패: {msg}",
     voice_saved: "인벤토리에 저장했어요.",
     meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
     meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
@@ -1173,6 +1183,22 @@ function renderVisionObjectPreview(options = {}) {
         });
       }
 
+      if (input && saveBtn && cancelBtn && editRow) {
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            saveBtn.click();
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelBtn.click();
+          }
+        });
+      }
+
       if (saveBtn && input && editRow) {
         saveBtn.addEventListener("click", async (event) => {
           event.preventDefault();
@@ -1246,7 +1272,7 @@ function renderVisionObjectPreview(options = {}) {
 
 function buildCustomVisionObject(bbox) {
   const id = `custom_${(crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`)}`;
-  const placeholder = currentLang === "ko" ? "새 항목" : "New item";
+  const placeholder = t("word_new_item");
   return {
     id,
     name: placeholder,
@@ -1535,6 +1561,76 @@ async function sendCaptureMessagePayload(payload) {
 
   await loadReviewQueue();
   return result;
+}
+
+function formatInventoryIngestSummary(data) {
+  const added = Array.isArray(data?.added) ? data.added : [];
+  const consumed = Array.isArray(data?.consumed) ? data.consumed : [];
+  const notFound = Array.isArray(data?.not_found) ? data.not_found : [];
+
+  const labelFor = (key, fallback) => ingredientLabel(String(key || ""), String(fallback || ""));
+  const fmtQty = (qty) => {
+    const n = Number(qty);
+    if (!Number.isFinite(n) || n === 1) {
+      return "";
+    }
+    return ` x${n}`;
+  };
+
+  const addedText = added
+    .map((row) => {
+      const item = row?.item || {};
+      const label = labelFor(item.ingredient_key, item.ingredient_name);
+      return label ? `${label}${fmtQty(row?.quantity)}` : "";
+    })
+    .filter((v) => v);
+
+  const consumedText = consumed
+    .map((row) => {
+      const label = labelFor(row?.ingredient_key, row?.ingredient_name);
+      const qty = row?.consumed_quantity === null ? null : row?.requested_quantity;
+      return label ? `${label}${qty === null ? "" : fmtQty(qty)}` : "";
+    })
+    .filter((v) => v);
+
+  const notFoundText = notFound
+    .map((row) => {
+      const label = labelFor(row?.ingredient_key, row?.ingredient_name);
+      return label ? `${label}${fmtQty(row?.quantity)}` : "";
+    })
+    .filter((v) => v);
+
+  const parts = [];
+  if (addedText.length > 0) {
+    parts.push(`${currentLang === "ko" ? "추가" : "Added"}: ${addedText.join(", ")}`);
+  }
+  if (consumedText.length > 0) {
+    parts.push(`${currentLang === "ko" ? "소비" : "Consumed"}: ${consumedText.join(", ")}`);
+  }
+  if (notFoundText.length > 0) {
+    parts.push(`${currentLang === "ko" ? "없음" : "Not found"}: ${notFoundText.join(", ")}`);
+  }
+
+  return parts.join(" | ").trim();
+}
+
+async function ingestInventoryFromText(text, sourceType = "realtime_voice") {
+  const value = String(text || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  return request("/api/v1/inventory/ingest", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      ui_lang: currentLang,
+      text: value,
+      source_type: sourceType,
+      purchased_at: todayIso(),
+      storage_type: getCaptureStorageType()
+    })
+  });
 }
 
 function getUserId() {
@@ -2853,6 +2949,36 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     return;
   }
 
+  if (isEasyMode()) {
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => ingestInventoryFromText(text, sourceType))
+      .then(async (res) => {
+        const data = res?.data || null;
+        const summary = data ? formatInventoryIngestSummary(data) : "";
+        if (!summary) {
+          appendRealtimeLogLine("system", t("voice_inventory_no_items"));
+          setRealtimeStatus(t("voice_inventory_no_items"));
+        } else {
+          appendRealtimeLogLine("system", tf("voice_inventory_updated", { summary }));
+          setRealtimeStatus(tf("voice_inventory_updated", { summary }));
+        }
+
+        await refreshAll();
+        // End the voice session after a single inventory update to keep the flow simple.
+        if (isRealtimeConnected()) {
+          stopRealtimeVoice();
+        }
+        return res;
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_inventory_update_failed", { msg }));
+        setGlobalError(msg);
+        setRealtimeStatus(tf("voice_inventory_update_failed", { msg }));
+      });
+    return;
+  }
+
   realtimeIngestChain = realtimeIngestChain
     .then(() =>
       sendCaptureMessagePayload({
@@ -3125,11 +3251,67 @@ function handleRealtimeEvent(evt) {
   }
 }
 
+async function applyPendingVisionEditsToDraftBeforeFinalize() {
+  const sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    return;
+  }
+
+  const list = $("visionObjectList");
+  if (!list) {
+    return;
+  }
+
+  const placeholder = String(t("word_new_item") || "").trim();
+  const placeholderEn = "New item";
+  const placeholderKo = "새 항목";
+  const pending = [];
+
+  const nodes = Array.from(list.querySelectorAll(".vision-object"));
+  for (const node of nodes) {
+    const oid = String(node?.dataset?.objectId || "").trim();
+    if (!oid) {
+      continue;
+    }
+
+    const obj = (visionObjectsCache || []).find((o) => String(o?.id || "") === oid) || null;
+    if (!obj) {
+      continue;
+    }
+
+    const editRow = node.querySelector(".vision-edit-row");
+    const input = node.querySelector(".vision-edit-input");
+    if (!input) {
+      continue;
+    }
+
+    const label = String(input.value || "").trim();
+    const needsApply = (editRow && editRow.hidden === false) || obj.draft_applied === false;
+    if (!needsApply) {
+      continue;
+    }
+
+    if (!label || label === placeholder || label === placeholderEn || label === placeholderKo) {
+      // Prevent finalizing a "New item" without an actual name.
+      throw new Error(t("err_vision_label_required"));
+    }
+
+    pending.push({ id: oid, label, quantity: obj.quantity ?? 1, unit: obj.unit || "ea" });
+  }
+
+  for (const p of pending) {
+    await replaceVisionObjectLabel(p.id, p.label, { quantity: p.quantity, unit: p.unit });
+  }
+}
+
 async function finalizeCaptureSession() {
   const sessionId = getCaptureSessionId();
   if (!sessionId) {
     throw new Error(t("err_no_capture_session"));
   }
+
+  // If the user typed labels for new/moved boxes but didn't tap "Save", apply them now so Finalize works.
+  await applyPendingVisionEditsToDraftBeforeFinalize();
 
   const result = await request(`/api/v1/capture/sessions/${sessionId}/finalize`, {
     method: "POST",
@@ -3143,6 +3325,7 @@ async function finalizeCaptureSession() {
   renderCaptureDraft(result.data.capture);
   setCaptureError("");
   await refreshAll();
+  setInventoryFilterStorage(getCaptureStorageType());
 }
 
 async function loadSummary() {
