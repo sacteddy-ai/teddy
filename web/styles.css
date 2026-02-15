@@ -65,6 +65,12 @@ body.easy .item .name {
   font-size: 1.06rem;
 }
 
+body.easy .draft-action-btn {
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  border-radius: 14px;
+}
+
 .background-blobs {
   position: fixed;
   inset: 0;

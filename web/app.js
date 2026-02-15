@@ -22,6 +22,7 @@ let visionLastImageDataUrl = "";
 let visionObjectsCache = [];
 let visionSelectedObjectId = "";
 let visionRelabelTargetId = "";
+let draftVoiceEditTarget = null; // { ingredient_key, quantity, unit, display_name }
 let visionEditMode = "select"; // select | add
 let visionPointerState = null;
 let visionTempBbox = null;
@@ -91,7 +92,7 @@ const I18N = {
     btn_quick_talk: "Talk",
     btn_quick_talk_browser: "Talk (Browser)",
     btn_stop_talk: "Stop Talking",
-    quick_capture_hint: "Choose storage, then take a photo or talk. We'll add items automatically.",
+    quick_capture_hint: "Choose storage, then take a photo or talk. We'll add items to the draft automatically.",
     label_session_id: "Session ID",
     ph_start_session: "Start a session",
     btn_start_session: "Start Session",
@@ -109,6 +110,7 @@ const I18N = {
     vision_objects_hint: "Tap a box to select. Edit labels if needed.",
     btn_edit_label: "Edit",
     btn_edit_label_voice: "Edit by Voice",
+    btn_remove_one: "Remove 1",
     btn_save_label: "Save",
     btn_cancel_label: "Cancel",
     vision_badge_ok: "ok",
@@ -184,6 +186,8 @@ const I18N = {
     voice_quota_exceeded:
       "OpenAI quota exceeded. Voice transcription via OpenAI is disabled until billing is enabled. Using browser speech recognition instead.",
     voice_draft_updated: "Draft updated from speech.",
+    voice_draft_updated_ready: "Added to draft. Review and tap Finalize to save.",
+    voice_draft_edit_hint: "Say the new name, or say \"delete\" to remove it.",
     voice_draft_update_failed: "Draft update failed: {msg}",
     voice_saved: "Saved to inventory.",
     meta_session_line: "Session {id} | status {status} | items {items} | total qty {qty}",
@@ -242,7 +246,7 @@ const I18N = {
     btn_quick_talk: "말하기",
     btn_quick_talk_browser: "말하기 (브라우저)",
     btn_stop_talk: "말하기 중지",
-    quick_capture_hint: "보관 방식을 고르고, 사진을 찍거나 말해보세요. 자동으로 추가해요.",
+    quick_capture_hint: "보관 방식을 고르고, 사진을 찍거나 말해보세요. 자동으로 드래프트에 추가해요.",
     label_session_id: "세션 ID",
     ph_start_session: "세션 시작",
     btn_start_session: "세션 시작",
@@ -260,6 +264,7 @@ const I18N = {
     vision_objects_hint: "박스를 눌러 선택하고, 필요하면 이름을 수정하세요.",
     btn_edit_label: "수정",
     btn_edit_label_voice: "말로 수정",
+    btn_remove_one: "빼기",
     btn_save_label: "저장",
     btn_cancel_label: "취소",
     vision_badge_ok: "확신",
@@ -334,6 +339,8 @@ const I18N = {
     voice_quota_exceeded:
       "OpenAI 크레딧/쿼터가 부족해서 음성 인식이 막혔어요. 결제/크레딧을 추가하면 다시 동작합니다. 지금은 브라우저 음성 인식을 사용합니다.",
     voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
+    voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
+    voice_draft_edit_hint: "새 이름을 말하거나 '삭제'라고 말하면 이 항목이 사라져요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
     voice_saved: "인벤토리에 저장했어요.",
     meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
@@ -1031,6 +1038,37 @@ async function replaceCaptureDraftIngredient(fromIngredientKey, toLabel, quantit
   return result;
 }
 
+async function removeCaptureDraftIngredient(ingredientKey, quantity, unit, removeAll = false) {
+  const key = String(ingredientKey || "").trim();
+  if (!key) {
+    return null;
+  }
+
+  let sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    await startCaptureSession();
+    sessionId = getCaptureSessionId();
+  }
+
+  const result = await request(`/api/v1/capture/sessions/${sessionId}/draft/remove`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      ingredient_key: key,
+      quantity: quantity ?? 1,
+      unit: unit || "ea",
+      remove_all: Boolean(removeAll)
+    })
+  });
+
+  const capture = result?.data?.capture || null;
+  if (capture) {
+    renderCaptureDraft(capture);
+  }
+  await loadReviewQueue();
+  return result;
+}
+
 function renderVisionObjectPreview(options = {}) {
   const { skipImageReload = false } = options || {};
 
@@ -1147,6 +1185,8 @@ function renderVisionObjectPreview(options = {}) {
           event.stopPropagation();
           selectVisionObject(obj?.id);
           visionRelabelTargetId = String(obj?.id || "");
+          realtimeLastIngestedText = "";
+          realtimeLastIngestedAt = 0;
           setRealtimeStatus(`${t("btn_edit_label_voice")}: ${idx + 1}. ${label}`);
           updateQuickTalkButton();
           try {
@@ -1861,9 +1901,92 @@ function renderCaptureDraft(capture) {
         </div>
         <div class="item-side">
           <span class="badge fresh">${t("badge_draft")}</span>
-          <button type="button" class="btn tiny ghost edit-draft-btn">${t("btn_edit_label")}</button>
+          <button type="button" class="btn tiny warn draft-action-btn remove-draft-btn">${t("btn_remove_one")}</button>
+          <button type="button" class="btn tiny ghost draft-action-btn edit-draft-voice-btn">${t("btn_edit_label_voice")}</button>
+          <button type="button" class="btn tiny ghost draft-action-btn edit-draft-btn advanced-only">${t("btn_edit_label")}</button>
         </div>
       `;
+
+      const removeBtn = node.querySelector(".remove-draft-btn");
+      if (removeBtn) {
+        removeBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          removeBtn.disabled = true;
+          try {
+            await removeCaptureDraftIngredient(item.ingredient_key, 1, item.unit, false);
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+          } finally {
+            removeBtn.disabled = false;
+          }
+        });
+      }
+
+      const voiceBtn = node.querySelector(".edit-draft-voice-btn");
+      if (voiceBtn) {
+        voiceBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const key = String(item?.ingredient_key || "").trim();
+          if (!key) {
+            return;
+          }
+
+          // Keep it simple: one utterance edits one draft item.
+          draftVoiceEditTarget = {
+            ingredient_key: key,
+            quantity: item?.quantity ?? 1,
+            unit: item?.unit || "ea",
+            display_name: displayName
+          };
+          realtimeLastIngestedText = "";
+          realtimeLastIngestedAt = 0;
+          visionRelabelTargetId = "";
+
+          setRealtimeStatus(`${t("btn_edit_label_voice")}: ${displayName}. ${t("voice_draft_edit_hint")}`);
+          updateQuickTalkButton();
+
+          try {
+            if (isRealtimeConnected()) {
+              stopRealtimeVoice();
+            }
+            if (browserSpeechRunning) {
+              stopBrowserSpeechRecognition();
+            }
+
+            if (realtimeQuotaBlocked) {
+              startBrowserSpeechRecognition();
+              return;
+            }
+
+            try {
+              await startRealtimeVoice();
+            } catch (err) {
+              const msg = err?.message || String(err);
+              if (/insufficient[_ ]quota/i.test(msg) || /exceeded your current quota/i.test(msg)) {
+                realtimeQuotaBlocked = true;
+                setRealtimeStatus(t("voice_quota_exceeded"));
+                if (isBrowserSpeechSupported()) {
+                  startBrowserSpeechRecognition();
+                  return;
+                }
+              }
+              throw err;
+            }
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+            setRealtimeStatus(tf("voice_start_failed", { msg }));
+            draftVoiceEditTarget = null;
+          } finally {
+            updateQuickTalkButton();
+          }
+        });
+      }
 
       const editBtn = node.querySelector(".edit-draft-btn");
       if (editBtn) {
@@ -2597,6 +2720,7 @@ function stopRealtimeVoice() {
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
+  draftVoiceEditTarget = null;
   setRealtimeStatus(t("voice_stopped"));
   updateQuickTalkButton();
 }
@@ -2632,46 +2756,6 @@ async function sendRealtimeTextToAgent(text, autoRespond = true) {
   }
 }
 
-function extractCaptureMessageReviewQueueCount(result) {
-  return (
-    result?.data?.review_queue_count ??
-    result?.data?.turn?.review_queue_item_count ??
-    result?.data?.capture?.review_queue_count ??
-    0
-  );
-}
-
-async function maybeAutoFinalizeSpeechCapture(messageResult) {
-  if (!isEasyMode()) {
-    return;
-  }
-
-  const draftCount = Number(messageResult?.data?.capture?.session?.draft_items?.length || 0);
-  if (draftCount <= 0) {
-    return;
-  }
-
-  const reviewQueueCount = extractCaptureMessageReviewQueueCount(messageResult);
-  if (reviewQueueCount > 0) {
-    // Keep the session open so confirmations can be applied.
-    return;
-  }
-
-  try {
-    await finalizeCaptureSession();
-    setCaptureError("");
-    setCaptureSessionId("");
-    renderCaptureDraft(null);
-    await Promise.all([loadSummary(), loadInventory(), loadNotifications()]);
-    setRealtimeStatus(t("voice_saved"));
-  } catch (err) {
-    const msg = err?.message || String(err);
-    setGlobalError(msg);
-    setCaptureError(msg);
-    setRealtimeStatus(msg);
-  }
-}
-
 function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   const text = String(finalText || "").trim();
   if (!text) {
@@ -2684,6 +2768,46 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   }
   realtimeLastIngestedText = text;
   realtimeLastIngestedAt = now;
+
+  if (draftVoiceEditTarget) {
+    const target = draftVoiceEditTarget;
+    draftVoiceEditTarget = null;
+    const key = String(target?.ingredient_key || "").trim();
+    if (!key) {
+      return;
+    }
+
+    const normalized = text.toLowerCase();
+    const deleteIntent =
+      /\b(remove|delete)\b/i.test(normalized) || /삭제|지워|빼|제거|없애|버려/.test(normalized);
+
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("draft(edit)", text);
+
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => {
+        if (deleteIntent) {
+          return removeCaptureDraftIngredient(key, 1, target?.unit || "ea", true);
+        }
+        return replaceCaptureDraftIngredient(key, text, target?.quantity ?? 1, target?.unit || "ea");
+      })
+      .then(() => {
+        appendRealtimeLogLine("system", t("voice_draft_updated"));
+        setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        // End the voice session after a single edit to keep the flow simple.
+        if (isRealtimeConnected()) {
+          stopRealtimeVoice();
+        }
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
 
   if (visionRelabelTargetId) {
     const targetId = visionRelabelTargetId;
@@ -2727,7 +2851,8 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     )
     .then((res) => {
       appendRealtimeLogLine("system", t("voice_draft_updated"));
-      return maybeAutoFinalizeSpeechCapture(res);
+      setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+      return res;
     })
     .catch((err) => {
       const msg = err?.message || "unknown error";
@@ -2823,6 +2948,7 @@ function stopBrowserSpeechRecognition() {
   browserSpeechRecognizer = null;
   browserSpeechRunning = false;
   visionRelabelTargetId = "";
+  draftVoiceEditTarget = null;
   try {
     recognizer?.stop?.();
   } catch {}
