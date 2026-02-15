@@ -18,6 +18,11 @@ let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
 
+let visionLastImageDataUrl = "";
+let visionObjectsCache = [];
+let visionSelectedObjectId = "";
+let visionRelabelTargetId = "";
+
 let browserSpeechRecognizer = null;
 let browserSpeechRunning = false;
 let browserSpeechFinalText = "";
@@ -97,6 +102,14 @@ const I18N = {
     seg_none: "none (full image)",
     seg_sam3_http: "sam3_http (require endpoint)",
     btn_analyze_image: "Analyze Image",
+    vision_objects_title: "Object Labels",
+    vision_objects_hint: "Tap a box to select. Edit labels if needed.",
+    btn_edit_label: "Edit",
+    btn_edit_label_voice: "Edit by Voice",
+    btn_save_label: "Save",
+    btn_cancel_label: "Cancel",
+    vision_badge_ok: "ok",
+    vision_badge_low: "check",
     live_camera_summary: "Live Camera (experimental)",
     btn_start_camera: "Start Camera",
     btn_stop_camera: "Stop Camera",
@@ -238,6 +251,14 @@ const I18N = {
     seg_none: "없음 (전체 이미지)",
     seg_sam3_http: "sam3_http (엔드포인트 필요)",
     btn_analyze_image: "이미지 분석",
+    vision_objects_title: "오브젝트 라벨",
+    vision_objects_hint: "박스를 눌러 선택하고, 필요하면 이름을 수정하세요.",
+    btn_edit_label: "수정",
+    btn_edit_label_voice: "말로 수정",
+    btn_save_label: "저장",
+    btn_cancel_label: "취소",
+    vision_badge_ok: "확신",
+    vision_badge_low: "확인",
     live_camera_summary: "라이브 카메라 (실험)",
     btn_start_camera: "카메라 시작",
     btn_stop_camera: "카메라 중지",
@@ -433,6 +454,7 @@ function setLang(lang) {
   syncCaptureStorageButtonsUI();
   syncInventoryTabsUI();
   updateQuickTalkButton();
+  renderVisionObjectPreview({ skipImageReload: true });
 }
 
 function applyI18n() {
@@ -639,6 +661,411 @@ function setVisionAnalyzeMeta(message) {
     return;
   }
   el.textContent = message || "";
+}
+
+function clearVisionObjectPreview() {
+  visionLastImageDataUrl = "";
+  visionObjectsCache = [];
+  visionSelectedObjectId = "";
+  visionRelabelTargetId = "";
+
+  const panel = $("visionObjectPanel");
+  if (panel) {
+    panel.hidden = true;
+  }
+  const img = $("visionPreviewImage");
+  if (img) {
+    img.removeAttribute("src");
+  }
+  const list = $("visionObjectList");
+  if (list) {
+    list.innerHTML = "";
+  }
+  const canvas = $("visionPreviewCanvas");
+  if (canvas && canvas.getContext) {
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+}
+
+function setVisionObjectsPreview(imageDataUrl, objects) {
+  visionLastImageDataUrl = String(imageDataUrl || "").trim();
+  visionObjectsCache = Array.isArray(objects) ? objects.filter(Boolean) : [];
+  if (!visionSelectedObjectId && visionObjectsCache.length > 0) {
+    visionSelectedObjectId = String(visionObjectsCache[0]?.id || "").trim() || "";
+  }
+  renderVisionObjectPreview();
+}
+
+function getVisionObjectDisplayLabel(obj) {
+  const key = obj?.ingredient_key || "";
+  const fallback = obj?.ingredient_name || obj?.name || key;
+  return ingredientLabel(key, fallback);
+}
+
+function selectVisionObject(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return;
+  }
+  visionSelectedObjectId = id;
+  syncVisionObjectSelectionUI();
+  drawVisionOverlay();
+}
+
+function syncVisionObjectSelectionUI() {
+  const list = $("visionObjectList");
+  if (!list) {
+    return;
+  }
+  list.querySelectorAll(".vision-object").forEach((node) => {
+    const id = String(node?.dataset?.objectId || "");
+    node.classList.toggle("selected", id && id === visionSelectedObjectId);
+  });
+}
+
+function findVisionObjectAt(nx, ny) {
+  const x = Number(nx);
+  const y = Number(ny);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  // Prefer the smallest matching box (more specific).
+  let best = null;
+  let bestArea = Infinity;
+  for (const obj of visionObjectsCache || []) {
+    const bbox = obj?.bbox;
+    if (!bbox) {
+      continue;
+    }
+    const bx = Number(bbox.x);
+    const by = Number(bbox.y);
+    const bw = Number(bbox.w);
+    const bh = Number(bbox.h);
+    if (![bx, by, bw, bh].every(Number.isFinite)) {
+      continue;
+    }
+    if (x < bx || y < by || x > bx + bw || y > by + bh) {
+      continue;
+    }
+    const area = bw * bh;
+    if (area < bestArea) {
+      bestArea = area;
+      best = obj;
+    }
+  }
+  return best;
+}
+
+function drawVisionOverlay() {
+  const img = $("visionPreviewImage");
+  const canvas = $("visionPreviewCanvas");
+  if (!img || !canvas || !canvas.getContext) {
+    return;
+  }
+  if (!visionLastImageDataUrl || (visionObjectsCache || []).length === 0) {
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    return;
+  }
+
+  const rect = img.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return;
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  const drawLabel = (x, y, text, color) => {
+    const padX = 6;
+    const padY = 4;
+    ctx.font = "600 12px Noto Sans KR, Space Grotesk, sans-serif";
+    const metrics = ctx.measureText(text);
+    const w = Math.ceil(metrics.width) + padX * 2;
+    const h = 18;
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(x, Math.max(0, y - h), w, h);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x + padX, Math.max(12, y - 5));
+  };
+
+  for (let i = 0; i < (visionObjectsCache || []).length; i += 1) {
+    const obj = visionObjectsCache[i];
+    const bbox = obj?.bbox;
+    if (!bbox) {
+      continue;
+    }
+    const bx = Number(bbox.x);
+    const by = Number(bbox.y);
+    const bw = Number(bbox.w);
+    const bh = Number(bbox.h);
+    if (![bx, by, bw, bh].every(Number.isFinite)) {
+      continue;
+    }
+
+    const x = bx * rect.width;
+    const y = by * rect.height;
+    const w = bw * rect.width;
+    const h = bh * rect.height;
+
+    const selected = obj?.id && String(obj.id) === visionSelectedObjectId;
+    const confidence = String(obj?.confidence || "").toLowerCase();
+    const baseColor = confidence === "low" ? "#b87014" : "#2f8f5b";
+    const stroke = selected ? "#182018" : baseColor;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = selected ? 3 : 2;
+    ctx.strokeRect(x, y, w, h);
+
+    const label = getVisionObjectDisplayLabel(obj);
+    const text = `${i + 1} ${label}`.trim();
+    drawLabel(x, y, text, "#fff");
+  }
+}
+
+async function replaceVisionObjectLabel(objectId, newLabel, options = {}) {
+  const id = String(objectId || "").trim();
+  const label = String(newLabel || "").trim();
+  if (!id || !label) {
+    return;
+  }
+
+  let sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    await startCaptureSession();
+    sessionId = getCaptureSessionId();
+  }
+
+  const obj = (visionObjectsCache || []).find((o) => String(o?.id || "") === id);
+  if (!obj?.ingredient_key) {
+    throw new Error("Vision object not found.");
+  }
+
+  const qty = options?.quantity ?? 1;
+  const unit = options?.unit || "ea";
+
+  const result = await request(`/api/v1/capture/sessions/${sessionId}/draft/replace`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      ui_lang: currentLang,
+      from_ingredient_key: obj.ingredient_key,
+      to_label: label,
+      quantity: qty,
+      unit
+    })
+  });
+
+  const capture = result?.data?.capture || null;
+  if (capture) {
+    renderCaptureDraft(capture);
+  }
+
+  const rep = result?.data?.replacement || null;
+  if (rep?.to_ingredient_key) {
+    obj.ingredient_key = rep.to_ingredient_key;
+  }
+  if (rep?.to_ingredient_name) {
+    obj.ingredient_name = rep.to_ingredient_name;
+  }
+  obj.confidence = "medium";
+
+  const locUpdated = Number(result?.data?.localization?.updated_count || 0);
+  if (locUpdated > 0) {
+    try {
+      await loadIngredientLabels(true);
+    } catch {}
+  }
+
+  renderVisionObjectPreview({ skipImageReload: true });
+  await loadReviewQueue();
+}
+
+async function replaceCaptureDraftIngredient(fromIngredientKey, toLabel, quantity, unit) {
+  const fromKey = String(fromIngredientKey || "").trim();
+  const label = String(toLabel || "").trim();
+  if (!fromKey || !label) {
+    return null;
+  }
+
+  let sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    await startCaptureSession();
+    sessionId = getCaptureSessionId();
+  }
+
+  const result = await request(`/api/v1/capture/sessions/${sessionId}/draft/replace`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      ui_lang: currentLang,
+      from_ingredient_key: fromKey,
+      to_label: label,
+      quantity: quantity ?? 1,
+      unit: unit || "ea"
+    })
+  });
+
+  const capture = result?.data?.capture || null;
+  if (capture) {
+    renderCaptureDraft(capture);
+  }
+
+  const locUpdated = Number(result?.data?.localization?.updated_count || 0);
+  if (locUpdated > 0) {
+    try {
+      await loadIngredientLabels(true);
+    } catch {}
+  }
+
+  await loadReviewQueue();
+  return result;
+}
+
+function renderVisionObjectPreview(options = {}) {
+  const { skipImageReload = false } = options || {};
+
+  const panel = $("visionObjectPanel");
+  if (!panel) {
+    return;
+  }
+
+  if (!visionLastImageDataUrl || (visionObjectsCache || []).length === 0) {
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+
+  const img = $("visionPreviewImage");
+  if (img && !skipImageReload) {
+    img.onload = () => {
+      drawVisionOverlay();
+    };
+    img.src = visionLastImageDataUrl;
+  } else {
+    // Image already set; still redraw in case labels changed.
+    drawVisionOverlay();
+  }
+
+  const list = $("visionObjectList");
+  if (list) {
+    list.innerHTML = "";
+
+    (visionObjectsCache || []).forEach((obj, idx) => {
+      const node = document.createElement("div");
+      node.className = "item vision-object";
+      node.dataset.objectId = String(obj?.id || "");
+      node.addEventListener("click", () => selectVisionObject(obj?.id));
+
+      const label = getVisionObjectDisplayLabel(obj);
+      const metaText = isEasyMode() ? "" : obj?.ingredient_key ? `key ${obj.ingredient_key}` : "";
+      const confidence = String(obj?.confidence || "").toLowerCase();
+      const badgeClass = confidence === "low" ? "expiring_soon" : "fresh";
+      const badgeText = confidence === "low" ? t("vision_badge_low") : t("vision_badge_ok");
+
+      node.innerHTML = `
+        <div class="item-main">
+          <strong class="name">${idx + 1}. ${label}</strong>
+          <span class="meta">${metaText}</span>
+          <div class="vision-edit-row" hidden>
+            <input class="vision-edit-input" type="text" value="${label.replace(/\"/g, "&quot;")}">
+            <button type="button" class="btn tiny secondary save-btn">${t("btn_save_label")}</button>
+            <button type="button" class="btn tiny ghost cancel-btn">${t("btn_cancel_label")}</button>
+          </div>
+        </div>
+        <div class="item-side">
+          <span class="badge ${badgeClass}">${badgeText}</span>
+          <button type="button" class="btn tiny ghost edit-btn">${t("btn_edit_label")}</button>
+          <button type="button" class="btn tiny ghost edit-voice-btn">${t("btn_edit_label_voice")}</button>
+        </div>
+      `;
+
+      const editBtn = node.querySelector(".edit-btn");
+      const voiceBtn = node.querySelector(".edit-voice-btn");
+      const editRow = node.querySelector(".vision-edit-row");
+      const input = node.querySelector(".vision-edit-input");
+      const saveBtn = node.querySelector(".save-btn");
+      const cancelBtn = node.querySelector(".cancel-btn");
+
+      if (editBtn && editRow) {
+        editBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          editRow.hidden = !editRow.hidden;
+          if (!editRow.hidden && input) {
+            input.focus();
+            input.select?.();
+          }
+        });
+      }
+
+      if (cancelBtn && editRow) {
+        cancelBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          editRow.hidden = true;
+        });
+      }
+
+      if (saveBtn && input && editRow) {
+        saveBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          saveBtn.disabled = true;
+          try {
+            await replaceVisionObjectLabel(obj?.id, input.value, { quantity: 1, unit: "ea" });
+            editRow.hidden = true;
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      }
+
+      if (voiceBtn) {
+        voiceBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectVisionObject(obj?.id);
+          visionRelabelTargetId = String(obj?.id || "");
+          setRealtimeStatus(`${t("btn_edit_label_voice")}: ${idx + 1}. ${label}`);
+          updateQuickTalkButton();
+          try {
+            if (realtimeQuotaBlocked) {
+              startBrowserSpeechRecognition();
+            } else {
+              await startRealtimeVoice();
+            }
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+          }
+        });
+      }
+
+      list.appendChild(node);
+    });
+  }
+
+  syncVisionObjectSelectionUI();
 }
 
 function setCameraStatus(message) {
@@ -1175,8 +1602,31 @@ function renderCaptureDraft(capture) {
         </div>
         <div class="item-side">
           <span class="badge fresh">${t("badge_draft")}</span>
+          <button type="button" class="btn tiny ghost edit-draft-btn">${t("btn_edit_label")}</button>
         </div>
       `;
+
+      const editBtn = node.querySelector(".edit-draft-btn");
+      if (editBtn) {
+        editBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const next = prompt(t("btn_edit_label"), displayName);
+          if (!next || !String(next).trim()) {
+            return;
+          }
+          editBtn.disabled = true;
+          try {
+            await replaceCaptureDraftIngredient(item.ingredient_key, next, item.quantity, item.unit);
+          } catch (err) {
+            const msg = err?.message || String(err);
+            setGlobalError(msg);
+            setCaptureError(msg);
+          } finally {
+            editBtn.disabled = false;
+          }
+        });
+      }
       list.appendChild(node);
     });
   }
@@ -1279,6 +1729,13 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
     renderCaptureDraft(capture);
   }
 
+  const visionObjects = Array.isArray(result?.data?.vision?.detected_objects) ? result.data.vision.detected_objects : [];
+  if (visionObjects.length > 0) {
+    setVisionObjectsPreview(imageDataUrl, visionObjects);
+  } else {
+    clearVisionObjectPreview();
+  }
+
   // If the server learned new localized aliases, refresh the catalog so labels render correctly.
   const locUpdated = Number(result?.data?.localization?.updated_count || 0);
   if (locUpdated > 0) {
@@ -1288,6 +1745,7 @@ async function analyzeVisionDataUrl(imageDataUrl, options = {}) {
         renderCaptureDraft(capture);
       }
       renderInventoryFromCache();
+      renderVisionObjectPreview({ skipImageReload: true });
     } catch {}
   }
 
@@ -1879,6 +2337,7 @@ function stopRealtimeVoice() {
   realtimeLastIngestedAt = 0;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
+  visionRelabelTargetId = "";
   setRealtimeStatus(t("voice_stopped"));
   updateQuickTalkButton();
 }
@@ -1966,6 +2425,30 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   }
   realtimeLastIngestedText = text;
   realtimeLastIngestedAt = now;
+
+  if (visionRelabelTargetId) {
+    const targetId = visionRelabelTargetId;
+    visionRelabelTargetId = "";
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("label", text);
+
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => replaceVisionObjectLabel(targetId, text, { quantity: 1, unit: "ea" }))
+      .then(() => {
+        // End the voice session after a single relabel to keep the flow simple.
+        if (isRealtimeConnected()) {
+          stopRealtimeVoice();
+        }
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
 
   setRealtimeStatus(tf("voice_heard", { text }));
   appendRealtimeLogLine("me", text);
@@ -2080,6 +2563,7 @@ function stopBrowserSpeechRecognition() {
   const recognizer = browserSpeechRecognizer;
   browserSpeechRecognizer = null;
   browserSpeechRunning = false;
+  visionRelabelTargetId = "";
   try {
     recognizer?.stop?.();
   } catch {}
@@ -2574,6 +3058,11 @@ async function refreshAll() {
 function bindEvents() {
   $("createItemForm").addEventListener("submit", createItemFromForm);
   $("refreshAllBtn").addEventListener("click", refreshAll);
+  window.addEventListener("resize", () => {
+    if (!document.hidden) {
+      drawVisionOverlay();
+    }
+  });
   if ($("languageSelect")) {
     $("languageSelect").addEventListener("change", async () => {
       setLang($("languageSelect").value);
@@ -2633,6 +3122,24 @@ function bindEvents() {
         try {
           input.value = "";
         } catch {}
+      }
+    });
+  }
+  if ($("visionPreviewCanvas")) {
+    $("visionPreviewCanvas").addEventListener("click", (event) => {
+      const img = $("visionPreviewImage");
+      if (!img) {
+        return;
+      }
+      const rect = img.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const x = (event.clientX - rect.left) / rect.width;
+      const y = (event.clientY - rect.top) / rect.height;
+      const obj = findVisionObjectAt(x, y);
+      if (obj?.id) {
+        selectVisionObject(obj.id);
       }
     });
   }

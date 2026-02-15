@@ -191,6 +191,15 @@
             <button id="analyzeVisionImageBtn" class="btn ghost" type="button" data-i18n="btn_analyze_image">Analyze Image</button>
           </div>
           <div id="visionAnalyzeMeta" class="muted"></div>
+          <div id="visionObjectPanel" class="vision-object-panel" hidden>
+            <h3 class="subhead" data-i18n="vision_objects_title">Object Labels</h3>
+            <p id="visionObjectHint" class="muted" data-i18n="vision_objects_hint">Tap a box to select. Edit labels if needed.</p>
+            <div class="vision-stage" id="visionStage">
+              <img id="visionPreviewImage" alt="" loading="lazy">
+              <canvas id="visionPreviewCanvas"></canvas>
+            </div>
+            <div id="visionObjectList" class="list"></div>
+          </div>
            <details class="camera-details advanced-only">
              <summary data-i18n="live_camera_summary">Live Camera (experimental)</summary>
              <div class="camera-panel">

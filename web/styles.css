@@ -223,6 +223,51 @@ h1 {
   font-size: 0.82rem;
 }
 
+.vision-object-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.vision-stage {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #111;
+}
+
+.vision-stage img {
+  width: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.vision-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.vision-object.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(24, 32, 24, 0.12);
+}
+
+.vision-edit-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.vision-edit-row input {
+  min-width: 0;
+}
+
 .grid {
   display: grid;
   gap: 14px;

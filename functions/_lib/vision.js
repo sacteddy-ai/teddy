@@ -7,23 +7,67 @@ function resolveOpenAiConfig(env) {
   return { apiKey, baseUrl, model };
 }
 
-export async function detectIngredientsFromImage(context, imageDataUrl, textHint = null) {
+function clamp01(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return Math.min(1, Math.max(0, n));
+}
+
+function normalizeBbox(raw) {
+  const x = clamp01(raw?.x);
+  const y = clamp01(raw?.y);
+  const w = clamp01(raw?.w);
+  const h = clamp01(raw?.h);
+  if (x === null || y === null || w === null || h === null) {
+    return null;
+  }
+  if (w <= 0 || h <= 0) {
+    return null;
+  }
+  // Ensure it fits in [0..1].
+  const ww = Math.min(w, 1 - x);
+  const hh = Math.min(h, 1 - y);
+  if (ww <= 0 || hh <= 0) {
+    return null;
+  }
+  return {
+    x: Math.round(x * 10000) / 10000,
+    y: Math.round(y * 10000) / 10000,
+    w: Math.round(ww * 10000) / 10000,
+    h: Math.round(hh * 10000) / 10000
+  };
+}
+
+export async function detectIngredientsFromImage(context, imageDataUrl, textHint = null, options = {}) {
   const { apiKey, baseUrl, model } = resolveOpenAiConfig(context.env);
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is required for vision detection.");
   }
 
   const hint = textHint && String(textHint).trim() ? `User hint: ${String(textHint).trim()}` : "";
+  const uiLang = options?.ui_lang ? String(options.ui_lang).trim().toLowerCase() : "";
+  const langHint = uiLang === "ko" ? "Language: Korean" : uiLang ? `Language: ${uiLang}` : "";
   const prompt = [
     "You are a fridge ingredient detector.",
-    "From the image, list food ingredients you can confidently identify.",
-    "Return ONLY JSON with this shape: {\"detected_items\": [string, ...]}",
+    "From the image, identify individual food items (ingredients, packaged foods, or prepared dishes).",
+    "For each item, return a name and a bounding box.",
+    "Bounding box format: normalized coordinates in [0..1] relative to the image.",
+    "- x, y: top-left corner",
+    "- w, h: width and height",
+    "",
+    "Return ONLY JSON with this shape:",
+    "{\"detected_objects\": [{\"name\": \"...\", \"bbox\": {\"x\": 0.1, \"y\": 0.2, \"w\": 0.3, \"h\": 0.4}}]}",
     "Rules:",
     "- Use short ingredient names (not brands).",
     "- No duplicates.",
     "- Max 12 items.",
     "- If uncertain, omit the item."
   ];
+  if (langHint) {
+    prompt.push(langHint);
+  }
   if (hint) {
     prompt.push(hint);
   }
@@ -78,35 +122,44 @@ export async function detectIngredientsFromImage(context, imageDataUrl, textHint
     obj = null;
   }
 
-  const items = Array.isArray(obj?.detected_items) ? obj.detected_items : [];
-  const normalized = [];
+  const rawObjects = Array.isArray(obj?.detected_objects) ? obj.detected_objects : [];
+  const detectedObjects = [];
+  const detectedItems = [];
   const seen = new Set();
-  for (const raw of items) {
-    const value = String(raw || "").trim();
-    if (!value) {
+
+  for (const raw of rawObjects) {
+    const name = raw?.name ? String(raw.name).trim() : "";
+    if (!name) {
       continue;
     }
-    const key = value.toLowerCase();
+    const bbox = normalizeBbox(raw?.bbox);
+    if (!bbox) {
+      continue;
+    }
+
+    const key = name.toLowerCase();
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    normalized.push(value);
-    if (normalized.length >= 12) {
+
+    detectedObjects.push({ name, bbox });
+    detectedItems.push(name);
+    if (detectedObjects.length >= 12) {
       break;
     }
   }
 
   return {
-    detected_items: normalized,
+    detected_items: detectedItems,
+    detected_objects: detectedObjects,
     provider: "openai",
     model,
     segmentation: {
-      provider: "none",
-      segment_count: 1,
-      warnings: []
+      provider: detectedObjects.length > 0 ? "openai_bbox" : "none",
+      segment_count: detectedObjects.length,
+      warnings: detectedObjects.length > 0 ? [] : ["no_objects"]
     },
     raw: { id: parsed?.id || null }
   };
 }
-

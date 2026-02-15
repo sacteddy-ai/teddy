@@ -6,6 +6,7 @@ import { parseConversationCommands } from "../../../_lib/chat.js";
 import { augmentParseResultWithChatLlmExtraction } from "../../../_lib/chat_llm_extractor.js";
 import { applyCaptureSessionParsedInput } from "../../../_lib/capture.js";
 import { ensureCatalogLocalizationForCommands } from "../../../_lib/ingredient_localization.js";
+import { normalizeIngredientKey, normalizeReviewPhraseValue, normalizeWord } from "../../../_lib/util.js";
 
 export async function onRequest(context) {
   const method = context.request.method.toUpperCase();
@@ -34,12 +35,14 @@ export async function onRequest(context) {
       throw new Error("segmentation_mode must be one of: auto, none, sam3_http.");
     }
 
-    const visionResult = await detectIngredientsFromImage(context, imageBase64Input, textHintInput);
+    const visionResult = await detectIngredientsFromImage(context, imageBase64Input, textHintInput, { ui_lang: uiLang });
     const detectedItems = Array.isArray(visionResult?.detected_items) ? visionResult.detected_items : [];
+    const detectedObjectsRaw = Array.isArray(visionResult?.detected_objects) ? visionResult.detected_objects : [];
 
     let captureApplyResult = null;
     let appliedToSession = false;
     let localization = null;
+    let detectedObjects = detectedObjectsRaw;
 
     if (autoApplyToSession && sessionIdInput && detectedItems.length > 0) {
       const session = await getObject(context.env, captureSessionKey(sessionIdInput));
@@ -54,6 +57,32 @@ export async function onRequest(context) {
       }
 
       const aliasLookup = await buildAliasLookup(context, session.user_id);
+      // Resolve detected objects to known ingredient keys for UI labeling + edits.
+      detectedObjects = detectedObjectsRaw.map((obj, idx) => {
+        const rawName = obj?.name ? String(obj.name).trim() : "";
+        const bbox = obj?.bbox && typeof obj.bbox === "object" ? obj.bbox : null;
+        const normalized = rawName ? normalizeReviewPhraseValue(rawName) : "";
+        const mention = normalized ? aliasLookup.get(normalizeWord(normalized)) : null;
+        if (mention?.ingredient_key) {
+          return {
+            id: `obj_${idx + 1}`,
+            name: rawName,
+            ingredient_key: mention.ingredient_key,
+            ingredient_name: mention.ingredient_name || mention.ingredient_key,
+            confidence: "medium",
+            bbox
+          };
+        }
+        const fallbackKey = normalizeIngredientKey(normalized || rawName);
+        return {
+          id: `obj_${idx + 1}`,
+          name: rawName,
+          ingredient_key: fallbackKey,
+          ingredient_name: normalized || rawName || fallbackKey,
+          confidence: "low",
+          bbox
+        };
+      });
       let parseResult = parseConversationCommands(textHintInput, detectedItems, aliasLookup);
       parseResult = await augmentParseResultWithChatLlmExtraction(
         context,
@@ -95,7 +124,7 @@ export async function onRequest(context) {
       data: {
         detected_items: detectedItems,
         detected_count: detectedItems.length,
-        vision: visionResult,
+        vision: { ...visionResult, detected_objects: detectedObjects },
         applied_to_session: appliedToSession,
         session_id: sessionIdInput || null,
         capture: captureApplyResult ? captureApplyResult.capture : null,
