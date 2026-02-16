@@ -17,6 +17,22 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function hasUsableInventory(inventoryItems) {
+  const rows = Array.isArray(inventoryItems) ? inventoryItems : [];
+  for (const item of rows) {
+    const qty = Number(item?.quantity || 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      continue;
+    }
+    const status = String(item?.status || "").trim().toLowerCase();
+    if (status === "expired") {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 function dedupeRecipes(items) {
   const out = [];
   const seen = new Set();
@@ -265,6 +281,27 @@ export async function onRequest(context) {
     const includeLive = parseBool(url.searchParams.get("include_live"), true);
 
     const inventory = await recomputeInventoryStatuses(context, userId);
+    if (!hasUsableInventory(inventory)) {
+      return jsonResponse(context, {
+        data: {
+          items: [],
+          count: 0,
+          grouped_items: [],
+          ui_lang: uiLang,
+          live: {
+            include_live: includeLive,
+            provider: null,
+            enabled: false,
+            count: 0,
+            query: null,
+            warning: "empty_inventory",
+            error: null,
+            providers: []
+          }
+        }
+      });
+    }
+
     const seeded = await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang });
 
     let live = {

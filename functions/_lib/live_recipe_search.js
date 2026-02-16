@@ -805,6 +805,16 @@ export async function getLiveRecipeRecommendations(context, inventoryItems, opti
     String(Array.isArray(inventoryItems) && inventoryItems[0]?.user_id ? inventoryItems[0].user_id : "demo-user").trim() ||
     "demo-user";
   const terms = await buildInventoryTermsForLang(context, inventoryItems, lang, Math.min(5, topN), userId);
+  if (terms.length === 0) {
+    return {
+      items: [],
+      count: 0,
+      enabled: true,
+      query: null,
+      warning: "empty_terms",
+      providers: []
+    };
+  }
   const baseQuery = buildFallbackRecipeQuery(terms, lang);
   const blogQuery = buildBlogQuery(terms, lang);
   const recipeWebQuery = buildRecipeWebQuery(terms, lang);
