@@ -21,6 +21,14 @@ export function aliasOverridesKey(userId) {
   return keyFor("ingredient_alias_overrides", userId);
 }
 
+export function inventoryUsageEventsKey(userId) {
+  return keyFor("inventory_usage_events", userId);
+}
+
+export function shoppingOrderDraftsKey(userId) {
+  return keyFor("shopping_order_drafts", userId);
+}
+
 export function phraseClassifierCacheKey(userId) {
   return keyFor("ingredient_phrase_classifier_cache", userId);
 }

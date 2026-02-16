@@ -330,9 +330,14 @@
       <article class="card">
         <div class="section-head">
           <h2 data-i18n="shopping_title">Shopping Suggestions</h2>
-          <button id="reloadShoppingBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
+          <div class="inline-actions">
+            <button id="toggleShoppingAutoFilterBtn" class="btn ghost" type="button" data-i18n="btn_shopping_auto_only">Auto-Order Only</button>
+            <button id="createOrderDraftBtn" class="btn secondary" type="button" data-i18n="btn_create_order_draft">Create Order Draft</button>
+            <button id="reloadShoppingBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
+          </div>
         </div>
         <div id="shoppingList" class="list"></div>
+        <div id="shoppingDraftResult" class="muted"></div>
       </article>
 
       <article class="card">

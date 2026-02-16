@@ -548,6 +548,11 @@ textarea {
   color: var(--ink);
 }
 
+.btn.active {
+  background: var(--ink);
+  color: #fff;
+}
+
 .btn.tiny {
   padding: 5px 8px;
   font-size: 0.78rem;
@@ -664,6 +669,11 @@ textarea {
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+#shoppingDraftResult {
+  margin-top: 10px;
+  min-height: 1.2em;
 }
 
 .bulk-bar {

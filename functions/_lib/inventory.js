@@ -1,4 +1,5 @@
 import { getExpirationSuggestion, getItemStatus } from "./expiration.js";
+import { appendInventoryUsageEvents } from "./inventory_usage.js";
 import { newExpirationNotifications } from "./notifications.js";
 import { nowIso, parseIsoDateToEpochDay, todayEpochDay, epochDayToIso, normalizeIngredientKey } from "./util.js";
 import { getArray, putArray, inventoryKey, notificationsKey } from "./store.js";
@@ -14,6 +15,14 @@ export function normalizeInventoryStatus(item, asOfEpochDay = null) {
     status: statusInfo.status,
     days_remaining: statusInfo.days_remaining
   };
+}
+
+async function logUsageEventsBestEffort(context, userId, events) {
+  try {
+    await appendInventoryUsageEvents(context, userId, events);
+  } catch {
+    // Usage tracking must not block inventory updates.
+  }
 }
 
 export async function createInventoryItemRecord(context, params) {
@@ -91,6 +100,17 @@ export async function createInventoryItemRecord(context, params) {
   existingNotifications.push(...notifications);
   await putArray(context.env, nKey, existingNotifications);
 
+  const keyForUsage = normalizeIngredientKey(String(resolvedIngredientKey || ingredientName || "").trim());
+  if (keyForUsage) {
+    await logUsageEventsBestEffort(context, userId, {
+      ts: now,
+      action: "add",
+      ingredient_key: keyForUsage,
+      quantity,
+      source: "inventory.create"
+    });
+  }
+
   return { item: newItem, notifications };
 }
 
@@ -101,6 +121,8 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
   let found = false;
   let removed = false;
   let updatedItem = null;
+  let consumedForUsage = 0;
+  let consumedIngredientKey = "";
   const updated = [];
 
   const now = nowIso();
@@ -111,7 +133,11 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
     }
 
     found = true;
-    const nextQty = Math.max(0, Number(item.quantity || 0) - consumedQuantity);
+    const beforeQty = Number(item.quantity || 0);
+    const actualConsumed = Math.max(0, Math.min(beforeQty, Number(consumedQuantity || 0)));
+    consumedForUsage = Math.round(actualConsumed * 100) / 100;
+
+    const nextQty = Math.max(0, beforeQty - consumedQuantity);
     const roundedQty = Math.round(nextQty * 100) / 100;
 
     const existingOpenedAt = item.opened_at ? String(item.opened_at).trim() : null;
@@ -131,6 +157,9 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
       product_shelf_life_days: item.product_shelf_life_days,
       as_of_date: now.slice(0, 10)
     });
+    consumedIngredientKey = normalizeIngredientKey(
+      String(item.ingredient_key || suggestion.ingredient_key || item.ingredient_name || "").trim()
+    );
 
     updatedItem = {
       id: item.id,
@@ -169,6 +198,16 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
 
   await putArray(context.env, invKey, updated);
 
+  if (consumedForUsage > 0 && consumedIngredientKey) {
+    await logUsageEventsBestEffort(context, userId, {
+      ts: now,
+      action: "consume",
+      ingredient_key: consumedIngredientKey,
+      quantity: consumedForUsage,
+      source: "inventory.consume_item"
+    });
+  }
+
   if (removed) {
     const nKey = notificationsKey(userId);
     const notifications = await getArray(context.env, nKey);
@@ -188,6 +227,7 @@ export async function invokeInventoryQuantityAdjustment(context, userId, itemId,
 
   let found = false;
   let updatedItem = null;
+  let usageEvent = null;
   const updated = [];
   const now = nowIso();
 
@@ -203,7 +243,33 @@ export async function invokeInventoryQuantityAdjustment(context, userId, itemId,
     }
 
     found = true;
-    const nextQty = Math.round((Number(item.quantity || 0) + delta) * 100) / 100;
+    const prevQty = Number(item.quantity || 0);
+    const nextQty = Math.round((prevQty + delta) * 100) / 100;
+    const usageKey = normalizeIngredientKey(String(item.ingredient_key || item.ingredient_name || "").trim());
+
+    if (usageKey) {
+      if (delta > 0) {
+        usageEvent = {
+          ts: now,
+          action: "add",
+          ingredient_key: usageKey,
+          quantity: Math.round(delta * 100) / 100,
+          source: "inventory.adjust"
+        };
+      } else {
+        const consumed = Math.round(Math.max(0, Math.min(prevQty, Math.abs(delta))) * 100) / 100;
+        if (consumed > 0) {
+          usageEvent = {
+            ts: now,
+            action: "consume",
+            ingredient_key: usageKey,
+            quantity: consumed,
+            source: "inventory.adjust"
+          };
+        }
+      }
+    }
+
     if (nextQty <= 0) {
       // Treat as removal.
       continue;
@@ -222,6 +288,10 @@ export async function invokeInventoryQuantityAdjustment(context, userId, itemId,
   }
 
   await putArray(context.env, invKey, updated);
+
+  if (usageEvent?.ingredient_key && Number(usageEvent?.quantity || 0) > 0) {
+    await logUsageEventsBestEffort(context, userId, usageEvent);
+  }
 
   if (!updatedItem) {
     // When an item is removed via quantity adjustment, clear its notifications too.
@@ -353,6 +423,15 @@ export async function upsertInventoryItemRecordByIngredientKey(context, params) 
     };
     items[bestIdx] = mergedItem;
     await putArray(context.env, invKey, items);
+
+    await logUsageEventsBestEffort(context, userId, {
+      ts: now,
+      action: "add",
+      ingredient_key: ingredientKey,
+      quantity,
+      source: "inventory.upsert_merge"
+    });
+
     return { item: mergedItem, merged: true, notifications: [] };
   }
 
@@ -440,6 +519,7 @@ export async function consumeInventoryByIngredientKey(context, userId, ingredien
   const removedIds = new Set();
   const modsById = new Map(); // id -> { remove: bool, quantity?: number }
   let consumed = 0;
+  let consumedAll = 0;
 
   for (const id of orderedIds) {
     const item = idToItem.get(String(id)) || null;
@@ -448,6 +528,8 @@ export async function consumeInventoryByIngredientKey(context, userId, ingredien
     }
 
     if (removeAll) {
+      const qty = Math.round(Math.max(0, Number(item.quantity || 0)) * 100) / 100;
+      consumedAll = Math.round((consumedAll + qty) * 100) / 100;
       modsById.set(String(id), { remove: true });
       removedIds.add(String(id));
       continue;
@@ -497,6 +579,17 @@ export async function consumeInventoryByIngredientKey(context, userId, ingredien
   }
 
   await putArray(context.env, invKey, updated);
+
+  const consumedForUsage = removeAll ? consumedAll : consumed;
+  if (consumedForUsage > 0) {
+    await logUsageEventsBestEffort(context, uid, {
+      ts: now,
+      action: "consume",
+      ingredient_key: ingredientKey,
+      quantity: consumedForUsage,
+      source: "inventory.consume_key"
+    });
+  }
 
   if (removedIds.size > 0) {
     const nKey = notificationsKey(uid);

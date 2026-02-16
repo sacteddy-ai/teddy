@@ -37,6 +37,7 @@ const LANG_STORAGE_KEY = "teddy_lang";
 const CAPTURE_STORAGE_TYPE_KEY = "teddy_capture_storage_type";
 const EASY_MODE_STORAGE_KEY = "teddy_easy_mode";
 const INVENTORY_FILTER_STORAGE_KEY = "teddy_inventory_filter_storage";
+const SHOPPING_AUTO_ONLY_STORAGE_KEY = "teddy_shopping_auto_only";
 
 let currentLang = "en";
 let ingredientLabelsUserId = "";
@@ -47,6 +48,8 @@ let ingredientLabelsLoadUserId = "";
 let inventoryItemsCache = [];
 let inventoryFilterStorage = "refrigerated";
 let inventorySelectedIds = new Set();
+let shoppingItemsCache = [];
+let shoppingAutoOnly = false;
 
 const I18N = {
   en: {
@@ -148,6 +151,9 @@ const I18N = {
     inventory_title: "Inventory",
     recipes_title: "Recipe Recommendations",
     shopping_title: "Shopping Suggestions",
+    btn_shopping_auto_only: "Auto-Order Only",
+    btn_shopping_show_all: "Show All",
+    btn_create_order_draft: "Create Order Draft",
     notifications_title: "Notifications",
     btn_consume_1: "Consume 1",
     btn_select_all: "Select all",
@@ -166,6 +172,7 @@ const I18N = {
     empty_inventory: "No inventory items yet.",
     empty_recipes: "No recipe recommendations yet.",
     empty_shopping: "No shopping suggestions.",
+    empty_shopping_auto_only: "No auto-order candidates.",
     empty_notifications: "No notifications.",
     empty_capture_none: "Start a capture session.",
     empty_capture_no_session: "No active capture session.",
@@ -209,6 +216,8 @@ const I18N = {
     meta_recipe_missing: "missing: {missing}",
     meta_shopping_reasons: "reasons: {reasons}",
     meta_shopping_related: "related recipes: {related}",
+    toast_order_draft_created: "Order draft created: {id} ({count} items)",
+    err_order_draft_no_items: "No visible shopping items to draft.",
     meta_notification_item: "item: {id}",
     meta_notification_scheduled: "scheduled: {ts}",
     toast_run_due: "Sent {count} notification(s) at {ts}",
@@ -314,6 +323,9 @@ const I18N = {
     inventory_title: "인벤토리",
     recipes_title: "레시피 추천",
     shopping_title: "장보기 추천",
+    btn_shopping_auto_only: "자동주문 후보만",
+    btn_shopping_show_all: "전체보기",
+    btn_create_order_draft: "주문 초안 만들기",
     notifications_title: "알림",
     btn_consume_1: "1개 소비",
     btn_select_all: "전체 선택",
@@ -332,6 +344,7 @@ const I18N = {
     empty_inventory: "아직 인벤토리 항목이 없습니다.",
     empty_recipes: "레시피 추천이 없습니다.",
     empty_shopping: "장보기 추천이 없습니다.",
+    empty_shopping_auto_only: "자동주문 후보가 없습니다.",
     empty_notifications: "알림이 없습니다.",
     empty_capture_none: "캡처 세션을 시작하세요.",
     empty_capture_no_session: "활성 캡처 세션이 없습니다.",
@@ -374,6 +387,8 @@ const I18N = {
     meta_recipe_missing: "부족: {missing}",
     meta_shopping_reasons: "이유: {reasons}",
     meta_shopping_related: "연관 레시피: {related}",
+    toast_order_draft_created: "주문 초안 생성: {id} ({count}개)",
+    err_order_draft_no_items: "주문 초안으로 만들 항목이 없습니다.",
     meta_notification_item: "아이템: {id}",
     meta_notification_scheduled: "예약: {ts}",
     toast_run_due: "알림 {count}건 발송 완료 ({ts})",
@@ -492,7 +507,9 @@ function setLang(lang) {
   applyI18n();
   syncCaptureStorageButtonsUI();
   syncInventoryTabsUI();
+  syncShoppingFilterUI();
   updateQuickTalkButton();
+  renderShoppingFromCache();
   renderVisionObjectPreview({ skipImageReload: true });
 }
 
@@ -3409,6 +3426,42 @@ function getVisibleInventoryItems() {
   return items.filter((item) => normalizeStorageType(item?.storage_type || "") === inventoryFilterStorage);
 }
 
+function detectDefaultShoppingAutoOnly() {
+  const raw = String(localStorage.getItem(SHOPPING_AUTO_ONLY_STORAGE_KEY) || "").trim().toLowerCase();
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
+    return true;
+  }
+  return false;
+}
+
+function getVisibleShoppingItems() {
+  const rows = Array.isArray(shoppingItemsCache) ? shoppingItemsCache : [];
+  if (!shoppingAutoOnly) {
+    return rows;
+  }
+  return rows.filter((item) => item && item.auto_order_candidate === true);
+}
+
+function syncShoppingFilterUI() {
+  const btn = $("toggleShoppingAutoFilterBtn");
+  if (!btn) {
+    return;
+  }
+  btn.classList.toggle("active", shoppingAutoOnly);
+  btn.textContent = shoppingAutoOnly ? t("btn_shopping_show_all") : t("btn_shopping_auto_only");
+}
+
+function setShoppingAutoOnly(enabled, options = {}) {
+  shoppingAutoOnly = Boolean(enabled);
+  if (options?.persist !== false) {
+    localStorage.setItem(SHOPPING_AUTO_ONLY_STORAGE_KEY, shoppingAutoOnly ? "true" : "false");
+  }
+  syncShoppingFilterUI();
+  if (options?.render !== false) {
+    renderShoppingFromCache();
+  }
+}
+
 function clearInventorySelection() {
   inventorySelectedIds = new Set();
   const selectAll = $("inventorySelectAll");
@@ -3845,7 +3898,8 @@ function renderShopping(items) {
   const list = $("shoppingList");
   list.innerHTML = "";
   if (!items.length) {
-    list.appendChild(emptyNode(t("empty_shopping")));
+    const emptyKey = shoppingAutoOnly ? "empty_shopping_auto_only" : "empty_shopping";
+    list.appendChild(emptyNode(t(emptyKey)));
     return;
   }
 
@@ -3864,11 +3918,30 @@ function renderShopping(items) {
         : Array.isArray(s.related_recipe_ids) && s.related_recipe_ids.length > 0
           ? s.related_recipe_ids.join(", ")
         : t("word_none");
+    const usage = s.usage && typeof s.usage === "object" ? s.usage : null;
+    const usageMeta = usage
+      ? currentLang === "ko"
+        ? `\uC0AC\uC6A9\uB7C9: ${Number(usage.avg_daily_consumption || 0)}/\uC77C | \uC608\uC0C1 \uC18C\uC9C4: ${
+            Number.isFinite(Number(usage.projected_days_left))
+              ? `${usage.projected_days_left}\uC77C`
+              : "-"
+          }`
+        : `usage: ${Number(usage.avg_daily_consumption || 0)}/day | projected runout: ${
+            Number.isFinite(Number(usage.projected_days_left)) ? `${usage.projected_days_left}d` : "-"
+          }`
+      : "";
+    const autoOrderMeta = s.auto_order_candidate
+      ? currentLang === "ko"
+        ? `\uC790\uB3D9 \uC8FC\uBB38 \uD6C4\uBCF4 (\uAD8C\uC7A5 \uC218\uB7C9 ${Number(s?.auto_order_hint?.suggested_quantity || 1)})`
+        : `auto-order candidate (suggested qty ${Number(s?.auto_order_hint?.suggested_quantity || 1)})`
+      : "";
     node.innerHTML = `
       <div class="item-main">
         <strong class="name">${label}</strong>
         <span class="meta">${tf("meta_shopping_reasons", { reasons })}</span>
         <span class="meta">${tf("meta_shopping_related", { related })}</span>
+        ${usageMeta ? `<span class="meta">${usageMeta}</span>` : ""}
+        ${autoOrderMeta ? `<span class="meta">${autoOrderMeta}</span>` : ""}
       </div>
       <div class="item-side">
         <span class="badge fresh">P${s.priority}</span>
@@ -3878,12 +3951,63 @@ function renderShopping(items) {
   });
 }
 
+function renderShoppingFromCache() {
+  const visible = getVisibleShoppingItems();
+  renderShopping(visible);
+}
+
 async function loadShopping() {
   await loadIngredientLabels();
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId, top_n: 8, top_recipe_count: 3, ui_lang: currentLang });
   const result = await request(`/api/v1/shopping/suggestions?${q}`, { method: "GET" });
-  renderShopping(result.data.items || []);
+  shoppingItemsCache = Array.isArray(result?.data?.items) ? result.data.items : [];
+  renderShoppingFromCache();
+}
+
+function normalizeDraftQuantity(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    return 1;
+  }
+  return Math.max(1, Math.round(n));
+}
+
+async function createOrderDraftFromVisibleShopping() {
+  const userId = getUserId();
+  const items = getVisibleShoppingItems();
+  if (!items.length) {
+    throw new Error(t("err_order_draft_no_items"));
+  }
+
+  const draftItems = items.map((item) => ({
+    ingredient_key: String(item?.ingredient_key || "").trim(),
+    ingredient_name: ingredientLabel(item?.ingredient_key || "", item?.ingredient_key || ""),
+    quantity: normalizeDraftQuantity(item?.auto_order_hint?.suggested_quantity || 1),
+    unit: "ea",
+    reasons: Array.isArray(item?.reasons) ? item.reasons : [],
+    priority: Number(item?.priority || 0),
+    auto_order_candidate: Boolean(item?.auto_order_candidate)
+  }));
+
+  const result = await request("/api/v1/shopping/order-drafts", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      source: "shopping_ui",
+      provider: "mixed",
+      items: draftItems
+    })
+  });
+
+  const draft = result?.data?.draft || null;
+  const resultEl = $("shoppingDraftResult");
+  if (resultEl && draft) {
+    resultEl.textContent = tf("toast_order_draft_created", {
+      id: draft.id,
+      count: Number(draft?.summary?.line_count || draftItems.length)
+    });
+  }
 }
 
 function renderNotifications(items) {
@@ -4417,6 +4541,22 @@ function bindEvents() {
   $("reloadInventoryBtn").addEventListener("click", loadInventory);
   $("reloadRecipesBtn").addEventListener("click", loadRecipes);
   $("reloadShoppingBtn").addEventListener("click", loadShopping);
+  if ($("toggleShoppingAutoFilterBtn")) {
+    $("toggleShoppingAutoFilterBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      setShoppingAutoOnly(!shoppingAutoOnly, { persist: true, render: true });
+    });
+  }
+  if ($("createOrderDraftBtn")) {
+    $("createOrderDraftBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await createOrderDraftFromVisibleShopping();
+      } catch (err) {
+        setGlobalError(err?.message || String(err));
+      }
+    });
+  }
   $("reloadNotificationsBtn").addEventListener("click", loadNotifications);
   $("reloadReviewQueueBtn").addEventListener("click", loadReviewQueue);
   $("startCaptureSessionBtn").addEventListener("click", async (event) => {
@@ -4570,6 +4710,7 @@ function init() {
   const captureStorage = storedCaptureStorage ? normalizeStorageType(storedCaptureStorage) : "refrigerated";
   applyCaptureStorageType(captureStorage, { persist: false, syncInventory: false });
   setInventoryFilterStorage(detectDefaultInventoryFilterStorage(), { persist: false });
+  setShoppingAutoOnly(detectDefaultShoppingAutoOnly(), { persist: false, render: false });
 
   const purchased = document.querySelector("[name='purchased_at']");
   if (purchased) {

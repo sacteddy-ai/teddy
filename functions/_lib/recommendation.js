@@ -1,5 +1,6 @@
 import { loadStaticJson } from "./assets.js";
-import { normalizeIngredientKey, clampNumber } from "./util.js";
+import { inventoryUsageEventsKey, getArray } from "./store.js";
+import { normalizeIngredientKey, clampNumber, parseDateOrDateTimeToEpochDay, todayEpochDay } from "./util.js";
 
 let recipeCache = null;
 let baselineCache = null;
@@ -127,6 +128,138 @@ function buildInventoryMap(inventoryItems) {
   return map;
 }
 
+function resolveShoppingUsageConfig(baseline, opts = {}) {
+  const usageWindowDays = clampNumber(
+    opts?.usage_window_days ?? baseline?.usage_window_days_default,
+    30,
+    7,
+    365
+  );
+  const usageReorderDaysThreshold = clampNumber(
+    opts?.usage_reorder_days_threshold ?? opts?.reorder_days_threshold ?? baseline?.usage_reorder_days_threshold_default,
+    5,
+    1,
+    60
+  );
+  const usageMinConsumedQuantity = clampNumber(
+    opts?.usage_min_consumed_quantity ?? baseline?.usage_min_consumed_quantity_default,
+    1,
+    0.1,
+    1000
+  );
+
+  return {
+    usage_window_days: Number(usageWindowDays),
+    usage_reorder_days_threshold: Number(usageReorderDaysThreshold),
+    usage_min_consumed_quantity: Number(usageMinConsumedQuantity)
+  };
+}
+
+function resolveUserIdFromInventoryOrOpts(inventoryItems, opts = {}) {
+  const fromOpts = String(opts?.user_id || "").trim();
+  if (fromOpts) {
+    return fromOpts;
+  }
+  const rows = Array.isArray(inventoryItems) ? inventoryItems : [];
+  for (const item of rows) {
+    const uid = String(item?.user_id || "").trim();
+    if (uid) {
+      return uid;
+    }
+  }
+  return "demo-user";
+}
+
+function resolveEventEpochDay(event) {
+  const rawEpoch = Number(event?.epoch_day);
+  if (Number.isFinite(rawEpoch)) {
+    return rawEpoch;
+  }
+  try {
+    return parseDateOrDateTimeToEpochDay(event?.ts);
+  } catch {
+    return null;
+  }
+}
+
+async function buildUsageStatsByIngredient(context, userId, usageCfg) {
+  const uid = String(userId || "demo-user").trim() || "demo-user";
+  const key = inventoryUsageEventsKey(uid);
+  const events = await getArray(context.env, key);
+
+  const windowDays = Math.max(1, Number(usageCfg?.usage_window_days || 30));
+  const minEpochDay = todayEpochDay() - windowDays + 1;
+  const aggregate = new Map();
+
+  for (const event of events || []) {
+    const action = String(event?.action || "").trim().toLowerCase();
+    if (action !== "consume") {
+      continue;
+    }
+    const ingredientKey = normalizeIngredientKey(String(event?.ingredient_key || "").trim());
+    if (!ingredientKey) {
+      continue;
+    }
+    const qty = clampNumber(event?.quantity, 0, 0, null);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      continue;
+    }
+    const epochDay = resolveEventEpochDay(event);
+    if (!Number.isFinite(epochDay) || epochDay < minEpochDay) {
+      continue;
+    }
+
+    if (!aggregate.has(ingredientKey)) {
+      aggregate.set(ingredientKey, {
+        ingredient_key: ingredientKey,
+        total_consumed: 0,
+        active_days: new Set(),
+        last_consumed_at: null,
+        last_epoch_day: null
+      });
+    }
+    const row = aggregate.get(ingredientKey);
+    row.total_consumed = Math.round((Number(row.total_consumed || 0) + qty) * 100) / 100;
+    row.active_days.add(epochDay);
+
+    const ts = event?.ts ? String(event.ts).trim() : null;
+    if (ts) {
+      row.last_consumed_at = ts;
+    }
+    if (!Number.isFinite(row.last_epoch_day) || epochDay > row.last_epoch_day) {
+      row.last_epoch_day = epochDay;
+    }
+  }
+
+  const out = new Map();
+  const today = todayEpochDay();
+  for (const [ingredientKey, row] of aggregate.entries()) {
+    const totalConsumed = Number(row.total_consumed || 0);
+    if (totalConsumed < Number(usageCfg?.usage_min_consumed_quantity || 0)) {
+      continue;
+    }
+    const activeDays = row.active_days instanceof Set ? row.active_days.size : 0;
+    const avgDaily = totalConsumed / windowDays;
+    const avgActive = activeDays > 0 ? totalConsumed / activeDays : 0;
+
+    const lastEpochDay = Number(row.last_epoch_day);
+    const daysSinceLastConsumed = Number.isFinite(lastEpochDay) ? Math.max(0, today - lastEpochDay) : null;
+
+    out.set(ingredientKey, {
+      ingredient_key: ingredientKey,
+      total_consumed: Math.round(totalConsumed * 100) / 100,
+      avg_daily_consumption: Math.round(avgDaily * 1000) / 1000,
+      avg_active_day_consumption: Math.round(avgActive * 1000) / 1000,
+      active_days: activeDays,
+      window_days: windowDays,
+      last_consumed_at: row.last_consumed_at || null,
+      days_since_last_consumed: Number.isFinite(daysSinceLastConsumed) ? daysSinceLastConsumed : null
+    });
+  }
+
+  return out;
+}
+
 export async function getRecipeRecommendations(context, inventoryItems, topN = 10) {
   let options = {};
   if (typeof topN === "object" && topN !== null) {
@@ -244,9 +377,70 @@ function addOrUpdateSuggestion(map, ingredientKey, reason, priority, relatedReci
   }
 }
 
+function attachUsageMeta(map, ingredientKey, usageMeta) {
+  const key = normalizeIngredientKey(String(ingredientKey || ""));
+  if (!key || !map.has(key) || !usageMeta || typeof usageMeta !== "object") {
+    return;
+  }
+  const entry = map.get(key);
+  entry.usage = {
+    ...(entry.usage && typeof entry.usage === "object" ? entry.usage : {}),
+    ...usageMeta
+  };
+}
+
+function computeUsageUrgencyMeta(inventoryMap, ingredientKey, usage, usageCfg) {
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+
+  const inv = inventoryMap.get(ingredientKey) || null;
+  const totalQty = Number(inv?.total_quantity || 0);
+  const avgDaily = Number(usage.avg_daily_consumption || 0);
+  const threshold = Number(usageCfg?.usage_reorder_days_threshold || 5);
+  const projectedDaysLeft = avgDaily > 0 ? Math.round((totalQty / avgDaily) * 10) / 10 : null;
+  const suggestedOrderDays = Math.max(2, Math.round(threshold + 2));
+  const suggestedOrderQuantity = avgDaily > 0 ? Math.max(1, Math.round(avgDaily * suggestedOrderDays)) : 1;
+  const daysSinceLast = Number(usage.days_since_last_consumed);
+
+  let urgencyScore = 0;
+  if (avgDaily > 0) {
+    urgencyScore += Math.min(45, Math.round(avgDaily * 25));
+  }
+  if (totalQty <= 0) {
+    urgencyScore += 35;
+  }
+  if (Number.isFinite(projectedDaysLeft)) {
+    const deficit = Math.max(0, threshold - projectedDaysLeft);
+    urgencyScore += Math.min(30, Math.round(deficit * 8));
+  }
+  if (Number.isFinite(daysSinceLast)) {
+    const recencyBoost = Math.max(0, 14 - daysSinceLast);
+    urgencyScore += Math.min(20, Math.round(recencyBoost));
+  }
+  urgencyScore = Math.max(0, Math.min(100, urgencyScore));
+
+  return {
+    total_consumed: usage.total_consumed,
+    avg_daily_consumption: usage.avg_daily_consumption,
+    window_days: usage.window_days,
+    active_days: usage.active_days,
+    last_consumed_at: usage.last_consumed_at,
+    days_since_last_consumed: usage.days_since_last_consumed,
+    projected_days_left: Number.isFinite(projectedDaysLeft) ? projectedDaysLeft : null,
+    reorder_days_threshold: threshold,
+    suggested_order_quantity: suggestedOrderQuantity,
+    urgency_score: urgencyScore
+  };
+}
+
 export async function getShoppingSuggestions(context, inventoryItems, recipeRecommendations = [], opts = {}) {
   const inventoryMap = buildInventoryMap(inventoryItems || []);
   const baseline = await getShoppingBaseline(context);
+  const usageCfg = resolveShoppingUsageConfig(baseline, opts);
+  const userId = resolveUserIdFromInventoryOrOpts(inventoryItems, opts);
+  const usageStatsByKey = await buildUsageStatsByIngredient(context, userId, usageCfg);
+
   const threshold = opts?.low_stock_threshold
     ? Number(opts.low_stock_threshold)
     : Number(baseline.low_stock_threshold_default || 1);
@@ -259,6 +453,27 @@ export async function getShoppingSuggestions(context, inventoryItems, recipeReco
     }
     if (entry.has_fresh_or_soon && entry.total_quantity > 0 && entry.total_quantity <= threshold) {
       addOrUpdateSuggestion(suggestionMap, key, "low_stock", 2);
+    }
+
+    const usage = usageStatsByKey.get(key) || null;
+    if (usage && Number(usage.avg_daily_consumption || 0) > 0) {
+      const projectedDaysLeft =
+        Number(entry.total_quantity || 0) > 0
+          ? Number(entry.total_quantity || 0) / Number(usage.avg_daily_consumption || 1)
+          : 0;
+
+      if (Number(entry.total_quantity || 0) <= 0) {
+        addOrUpdateSuggestion(suggestionMap, key, "usage_restock", 2);
+      } else if (projectedDaysLeft <= Number(usageCfg.usage_reorder_days_threshold || 5)) {
+        addOrUpdateSuggestion(suggestionMap, key, "usage_reorder_soon", 2);
+      }
+    }
+  }
+
+  for (const [key] of usageStatsByKey.entries()) {
+    const entry = inventoryMap.get(key);
+    if (!entry || Number(entry.total_quantity || 0) <= 0) {
+      addOrUpdateSuggestion(suggestionMap, key, "usage_restock", 2);
     }
   }
 
@@ -286,12 +501,7 @@ export async function getShoppingSuggestions(context, inventoryItems, recipeReco
     }
   }
 
-  const items = Array.from(suggestionMap.values()).sort((a, b) => {
-    if (a.priority !== b.priority) {
-      return a.priority - b.priority;
-    }
-    return String(a.ingredient_key).localeCompare(String(b.ingredient_key));
-  });
+  const items = Array.from(suggestionMap.values());
 
   const recipeNameById = new Map();
   for (const recipe of recipeRecommendations || []) {
@@ -309,15 +519,77 @@ export async function getShoppingSuggestions(context, inventoryItems, recipeReco
       .map((id) => recipeNameById.get(String(id)) || String(id))
       .filter((v) => String(v || "").trim().length > 0);
 
-    return {
+    const usage = usageStatsByKey.get(entry.ingredient_key) || null;
+    const usageMeta = computeUsageUrgencyMeta(inventoryMap, entry.ingredient_key, usage, usageCfg);
+    if (usageMeta) {
+      attachUsageMeta(suggestionMap, entry.ingredient_key, usageMeta);
+    }
+
+    const next = {
       ...entry,
-      related_recipe_names: relatedRecipeNames
+      related_recipe_names: relatedRecipeNames,
+      usage: suggestionMap.get(entry.ingredient_key)?.usage || null
     };
+
+    const reasons = Array.isArray(next.reasons) ? next.reasons : [];
+    const urgency = Number(next?.usage?.urgency_score || 0);
+    const projected = Number(next?.usage?.projected_days_left);
+    const hasProjected = Number.isFinite(projected);
+
+    const autoOrderCandidate =
+      reasons.includes("usage_restock") ||
+      reasons.includes("expired_replace") ||
+      (reasons.includes("usage_reorder_soon") && urgency >= 45) ||
+      (reasons.includes("low_stock") && urgency >= 35);
+
+    next.auto_order_candidate = autoOrderCandidate;
+    next.auto_order_hint = autoOrderCandidate
+      ? {
+          suggested_quantity: Number(next?.usage?.suggested_order_quantity || 1),
+          next_order_within_days: hasProjected ? Math.max(0, Math.round(projected)) : null
+        }
+      : null;
+
+    return next;
+  });
+
+  itemsWithNames.sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+
+    const aUrgency = Number(a?.usage?.urgency_score || 0);
+    const bUrgency = Number(b?.usage?.urgency_score || 0);
+    if (bUrgency !== aUrgency) {
+      return bUrgency - aUrgency;
+    }
+
+    const aProjected = Number(a?.usage?.projected_days_left);
+    const bProjected = Number(b?.usage?.projected_days_left);
+    const aProjectedOk = Number.isFinite(aProjected);
+    const bProjectedOk = Number.isFinite(bProjected);
+    if (aProjectedOk && bProjectedOk && aProjected !== bProjected) {
+      return aProjected - bProjected;
+    }
+    if (aProjectedOk !== bProjectedOk) {
+      return aProjectedOk ? -1 : 1;
+    }
+
+    const aAvg = Number(a?.usage?.avg_daily_consumption || 0);
+    const bAvg = Number(b?.usage?.avg_daily_consumption || 0);
+    if (bAvg !== aAvg) {
+      return bAvg - aAvg;
+    }
+
+    return String(a.ingredient_key).localeCompare(String(b.ingredient_key));
   });
 
   return {
     items: itemsWithNames,
     count: itemsWithNames.length,
-    low_stock_threshold: threshold
+    low_stock_threshold: threshold,
+    usage_window_days: usageCfg.usage_window_days,
+    usage_reorder_days_threshold: usageCfg.usage_reorder_days_threshold,
+    usage_min_consumed_quantity: usageCfg.usage_min_consumed_quantity
   };
 }

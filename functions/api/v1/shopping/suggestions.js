@@ -30,6 +30,14 @@ function reasonLabel(reasonCode, uiLang) {
     recipe_missing: {
       en: "needed for recommended recipe",
       ko: "\uCD94\uCC9C \uB808\uC2DC\uD53C \uD544\uC218 \uC7AC\uB8CC"
+    },
+    usage_restock: {
+      en: "frequently used item is out",
+      ko: "\uC790\uC8FC \uC4F0\uB294 \uC2DD\uC7AC\uB8CC \uC7AC\uACE0 \uC18C\uC9C4"
+    },
+    usage_reorder_soon: {
+      en: "likely to run out soon (usage-based)",
+      ko: "\uC18C\uC9C4 \uC18D\uB3C4 \uAE30\uC900 \uACE7 \uBD80\uC871"
     }
   };
 
@@ -38,6 +46,33 @@ function reasonLabel(reasonCode, uiLang) {
     return code || "unknown";
   }
   return row[lang] || row.en || code;
+}
+
+function hasUsableInventory(inventoryItems) {
+  const rows = Array.isArray(inventoryItems) ? inventoryItems : [];
+  for (const item of rows) {
+    const qty = Number(item?.quantity || 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      continue;
+    }
+    const status = String(item?.status || "").trim().toLowerCase();
+    if (status === "expired") {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+function parseOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return n;
 }
 
 export async function onRequest(context) {
@@ -56,13 +91,23 @@ export async function onRequest(context) {
     const topRecipeCount = Number(url.searchParams.get("top_recipe_count") || 3);
     const lowStockThresholdRaw = url.searchParams.get("low_stock_threshold");
     const lowStockThreshold = lowStockThresholdRaw ? Number(lowStockThresholdRaw) : null;
+    const usageWindowDays = parseOptionalNumber(url.searchParams.get("usage_window_days"));
+    const usageReorderDaysThreshold = parseOptionalNumber(url.searchParams.get("usage_reorder_days_threshold"));
+    const usageMinConsumedQuantity = parseOptionalNumber(url.searchParams.get("usage_min_consumed_quantity"));
     const uiLang = normalizeLang(url.searchParams.get("ui_lang") || "en");
 
     const inventory = await recomputeInventoryStatuses(context, userId);
-    const recs = await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang });
+    const includeRecipeSignals = hasUsableInventory(inventory);
+    const recs = includeRecipeSignals
+      ? await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang })
+      : [];
     const shopping = await getShoppingSuggestions(context, inventory, recs, {
-      top_recipe_count: topRecipeCount,
-      low_stock_threshold: lowStockThreshold
+      user_id: userId,
+      top_recipe_count: includeRecipeSignals ? topRecipeCount : 0,
+      low_stock_threshold: lowStockThreshold,
+      usage_window_days: usageWindowDays,
+      usage_reorder_days_threshold: usageReorderDaysThreshold,
+      usage_min_consumed_quantity: usageMinConsumedQuantity
     });
 
     const localizedItems = (shopping.items || []).map((item) => {
@@ -78,6 +123,9 @@ export async function onRequest(context) {
         items: localizedItems,
         count: localizedItems.length,
         low_stock_threshold: shopping.low_stock_threshold,
+        usage_window_days: shopping.usage_window_days,
+        usage_reorder_days_threshold: shopping.usage_reorder_days_threshold,
+        usage_min_consumed_quantity: shopping.usage_min_consumed_quantity,
         ui_lang: uiLang
       }
     });
