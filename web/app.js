@@ -16,6 +16,8 @@ let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
 let realtimeRecentSpeechTexts = [];
 let realtimeLastVisionRelabelAt = 0;
+let realtimeLastVisionTargetObjectId = "";
+let realtimeLastVisionTargetAt = 0;
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
@@ -909,9 +911,13 @@ function setVisionRelabelTarget(objectId, options = {}) {
   const id = String(objectId || "").trim();
   if (!id) {
     visionRelabelTargetId = "";
+    realtimeLastVisionTargetObjectId = "";
+    realtimeLastVisionTargetAt = 0;
     return;
   }
   visionRelabelTargetId = id;
+  realtimeLastVisionTargetObjectId = id;
+  realtimeLastVisionTargetAt = Date.now();
   if (options?.select !== false) {
     selectVisionObject(id);
   }
@@ -1044,7 +1050,7 @@ function extractVisionLabelFromSpeech(rawText) {
   }
   text = text.replace(/\s+/g, " ").trim();
 
-  const notMatch = text.match(/\uC544\uB2C8\uB77C\s+(.+)$/u);
+  const notMatch = text.match(/\uC544\uB2C8\uB77C\s*(.+)$/u);
   if (notMatch?.[1]) {
     text = notMatch[1].trim();
   }
@@ -1303,8 +1309,116 @@ function normalizeVoiceIngredientPhrase(rawPhrase) {
     .trim();
 }
 
+function stripLeadingSpeechFiller(rawText) {
+  let text = String(rawText || "").trim();
+  if (!text) {
+    return "";
+  }
+  text = text.replace(
+    /^(?:(?:\uADF8\uB9AC\uACE0|\uADF8\uB7FC|\uADF8\uB807\uACE0|\uADF8\uB7EC\uBA74|\uADF8\uB0E5|\uADF8\uB7F0\uB370)\s*|(?:\uC74C+|\uC5B4+|\uC544+)(?:\s+|$))/u,
+    ""
+  );
+  return text.trim();
+}
+
+function parseQuantityOnlyIntent(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return null;
+  }
+  if (/(?:\uBC88|\uBC88\uC9F8)/u.test(text)) {
+    return null;
+  }
+
+  const patterns = [
+    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?/u,
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (!m) {
+      continue;
+    }
+    const q = parseSpokenCountToken(m[1]);
+    if (Number.isFinite(q) && q > 0 && q <= 200) {
+      return { quantity: q };
+    }
+  }
+  return null;
+}
+
+function parseCorrectionReplacementLabel(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return "";
+  }
+
+  const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
+  const markers = ["\uC544\uB2C8\uB77C", "\uB9D0\uACE0"];
+
+  const escapeForRegex = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const appearsAsStandaloneNounLike = (source, token) => {
+    const raw = String(source || "");
+    const tkn = String(token || "").trim();
+    if (!raw || !tkn) {
+      return false;
+    }
+    const p = new RegExp(`(?:^|\\s)${escapeForRegex(tkn)}(?:\\s|$|[.,!?~]|[\\uC740\\uB294\\uC774\\uAC00\\uC744\\uB97C\\uC640\\uACFC\\uB3C4])`, "u");
+    return p.test(raw);
+  };
+
+  for (const segment of segments) {
+    const source = String(segment || "").trim();
+    if (!source) {
+      continue;
+    }
+
+    for (const marker of markers) {
+      const idx = source.lastIndexOf(marker);
+      if (idx < 0) {
+        continue;
+      }
+
+      let tail = source.slice(idx + marker.length).trim();
+      if (!tail) {
+        continue;
+      }
+
+      // ASR can duplicate phrases in one utterance: keep only the final replacement chunk.
+      const nestedParts = tail
+        .split(/\s*(?:\uC544\uB2C8\uB77C|\uB9D0\uACE0)\s*/u)
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      if (nestedParts.length > 0) {
+        tail = nestedParts[nestedParts.length - 1];
+      }
+
+      const extracted = extractVisionLabelFromSpeech(tail) || tail;
+      let label = normalizeVisionLabelCandidate(extracted);
+      if (!label) {
+        continue;
+      }
+
+      // Handle split utterances like "...아니라" then "토마토고".
+      if (/^[\uAC00-\uD7A3A-Za-z0-9]{2,24}\uACE0$/u.test(label)) {
+        const base = label.slice(0, -1).trim();
+        const baseNorm = normalizeVisionLabelCandidate(base);
+        if (baseNorm && appearsAsStandaloneNounLike(source, baseNorm)) {
+          label = baseNorm;
+        }
+      }
+
+      if (label) {
+        return label;
+      }
+    }
+  }
+
+  return "";
+}
+
 function parseDraftQuantityIntent(rawText) {
-  const text = String(rawText || "").trim();
+  const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
     return null;
   }
@@ -1378,7 +1492,7 @@ function findDraftItemByVoicePhrase(ingredientPhrase) {
 }
 
 function parseVisionOrdinalTargetOnlyIntent(rawText) {
-  const text = String(rawText || "").trim();
+  const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
     return null;
   }
@@ -1400,7 +1514,7 @@ function parseVisionOrdinalTargetOnlyIntent(rawText) {
 }
 
 function parseVisionOrdinalRelabelIntent(rawText) {
-  const text = String(rawText || "").trim();
+  const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
     return null;
   }
@@ -1426,9 +1540,11 @@ function parseVisionOrdinalRelabelIntent(rawText) {
       return null;
     }
 
-    const label = normalizeVisionLabelCandidate(
-      extractVisionLabelFromSpeech(tail) || tail.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim()
-    );
+    const label =
+      parseCorrectionReplacementLabel(tail) ||
+      normalizeVisionLabelCandidate(
+        extractVisionLabelFromSpeech(tail) || tail.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim()
+      );
     if (!label) {
       continue;
     }
@@ -2785,7 +2901,7 @@ async function analyzeVisionImage() {
   const resized = await downscaleImageDataUrl(imageDataUrl, { maxSize: 1024, quality: 0.85 });
   await analyzeVisionDataUrl(resized, {
     refreshMode: "light",
-    realtimeAutoRespond: true,
+    realtimeAutoRespond: false,
     realtimePrompt: "이 이미지에서 보이는 식자재를 간단히 말해줘."
   });
 }
@@ -2946,7 +3062,7 @@ async function captureLiveCameraFrame(options = {}) {
     const dataUrl = captureVideoFrameAsDataUrl(video, { maxSize: 960, quality: 0.85 });
     await analyzeVisionDataUrl(dataUrl, {
       refreshMode: "light",
-      realtimeAutoRespond: !isAuto,
+      realtimeAutoRespond: false,
       realtimePrompt: isAuto ? null : "이 이미지에서 보이는 식자재를 간단히 말해줘."
     });
   } catch (err) {
@@ -3166,7 +3282,7 @@ async function startRealtimeVoice() {
                 },
                 turn_detection: {
                   type: "server_vad",
-                  create_response: true
+                  create_response: false
                 }
               }
             }
@@ -3292,6 +3408,8 @@ function stopRealtimeVoice() {
   realtimeLastIngestedAt = 0;
   realtimeRecentSpeechTexts = [];
   realtimeLastVisionRelabelAt = 0;
+  realtimeLastVisionTargetObjectId = "";
+  realtimeLastVisionTargetAt = 0;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -3401,6 +3519,8 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then(() => replaceVisionObjectLabel(targetObj.id, ordinalRelabel.label, { quantity: 1, unit: "ea" }))
       .then(() => {
         realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = targetObj.id;
+        realtimeLastVisionTargetAt = Date.now();
         setRealtimeStatus(t("voice_draft_updated"));
         closeVisionInlineEditor();
       })
@@ -3432,18 +3552,81 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     const targetId = visionRelabelTargetId;
     if (isVisionRelabelCancelSpeech(text)) {
       visionRelabelTargetId = "";
+      realtimeLastVisionTargetObjectId = "";
+      realtimeLastVisionTargetAt = 0;
       appendRealtimeLogLine("label", "canceled");
       setRealtimeStatus(t("voice_idle"));
       return;
     }
 
-    const extractedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(text));
+    const qtyOnly = parseQuantityOnlyIntent(text);
+    if (qtyOnly?.quantity) {
+      const obj = getVisionObjectById(targetId);
+      const key = String(obj?.ingredient_key || "").trim();
+      if (key) {
+        const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
+        setRealtimeStatus(tf("voice_heard", { text }));
+        appendRealtimeLogLine("draft(qty)", `${displayName} x${qtyOnly.quantity}`);
+        realtimeLastVisionTargetObjectId = targetId;
+        realtimeLastVisionTargetAt = Date.now();
+        realtimeIngestChain = realtimeIngestChain
+          .then(() => replaceCaptureDraftIngredient(key, displayName, qtyOnly.quantity, obj?.unit || "ea"))
+          .then(() => {
+            realtimeLastVisionRelabelAt = Date.now();
+            setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+          })
+          .catch((err) => {
+            const msg = err?.message || "unknown error";
+            appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+            setGlobalError(msg);
+            setCaptureError(msg);
+            setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+          });
+        return;
+      }
+    }
+
+    let correctionLabel = parseCorrectionReplacementLabel(text);
+    if (!correctionLabel && recentContext.length > 0) {
+      const prev = String(recentContext[recentContext.length - 1] || "").trim();
+      if (prev) {
+        correctionLabel = parseCorrectionReplacementLabel(`${prev} ${text}`.trim());
+      }
+    }
+    if (correctionLabel) {
+      setRealtimeStatus(tf("voice_heard", { text }));
+      appendRealtimeLogLine("label", correctionLabel);
+      realtimeIngestChain = realtimeIngestChain
+        .then(() => replaceVisionObjectLabel(targetId, correctionLabel, { quantity: 1, unit: "ea" }))
+        .then(() => {
+          realtimeLastVisionRelabelAt = Date.now();
+          realtimeLastVisionTargetObjectId = targetId;
+          realtimeLastVisionTargetAt = Date.now();
+          setRealtimeStatus(t("voice_draft_updated"));
+          closeVisionInlineEditor();
+        })
+        .catch((err) => {
+          const msg = err?.message || "unknown error";
+          appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+        });
+      return;
+    }
+
+    let extractedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(text));
+    if (!extractedLabel && recentContext.length > 0) {
+      const prev = String(recentContext[recentContext.length - 1] || "").trim();
+      if (prev) {
+        extractedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(`${prev} ${text}`.trim()));
+      }
+    }
     if (!extractedLabel) {
       appendRealtimeLogLine("label_ignored", text);
       setRealtimeStatus(t("voice_draft_edit_hint"));
       return;
     }
-    visionRelabelTargetId = "";
     setRealtimeStatus(tf("voice_heard", { text }));
     appendRealtimeLogLine("label", extractedLabel);
 
@@ -3451,6 +3634,8 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then(() => replaceVisionObjectLabel(targetId, extractedLabel, { quantity: 1, unit: "ea" }))
       .then(() => {
         realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = targetId;
+        realtimeLastVisionTargetAt = Date.now();
         setRealtimeStatus(t("voice_draft_updated"));
         closeVisionInlineEditor();
       })
@@ -3462,6 +3647,36 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
       });
     return;
+  }
+
+  const recentTargetAge = Date.now() - Number(realtimeLastVisionTargetAt || 0);
+  const recentTargetId =
+    realtimeLastVisionTargetObjectId && recentTargetAge >= 0 && recentTargetAge <= 30000
+      ? realtimeLastVisionTargetObjectId
+      : "";
+  const qtyOnlyWithRecentTarget = parseQuantityOnlyIntent(text);
+  if (recentTargetId && qtyOnlyWithRecentTarget?.quantity) {
+    const obj = getVisionObjectById(recentTargetId);
+    const key = String(obj?.ingredient_key || "").trim();
+    if (key) {
+      const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
+      setRealtimeStatus(tf("voice_heard", { text }));
+      appendRealtimeLogLine("draft(qty)", `${displayName} x${qtyOnlyWithRecentTarget.quantity}`);
+      realtimeIngestChain = realtimeIngestChain
+        .then(() => replaceCaptureDraftIngredient(key, displayName, qtyOnlyWithRecentTarget.quantity, obj?.unit || "ea"))
+        .then(() => {
+          realtimeLastVisionTargetAt = Date.now();
+          setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        })
+        .catch((err) => {
+          const msg = err?.message || "unknown error";
+          appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+        });
+      return;
+    }
   }
 
   const draftQuantityIntent = parseDraftQuantityIntent(text);
@@ -3497,8 +3712,33 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   setRealtimeStatus(tf("voice_heard", { text }));
   appendRealtimeLogLine("me", text);
 
+  const hasOpenCaptureSession = Boolean(getCaptureSessionId());
   const autoIngest = isEasyMode() || ($("realtimeAutoIngestSpeech") && $("realtimeAutoIngestSpeech").checked);
   if (!autoIngest) {
+    return;
+  }
+
+  if (hasOpenCaptureSession) {
+    realtimeIngestChain = realtimeIngestChain
+      .then(() =>
+        sendCaptureMessagePayload({
+          source_type: sourceType,
+          text,
+          vision_detected_items: []
+        })
+      )
+      .then((res) => {
+        appendRealtimeLogLine("system", t("voice_draft_updated"));
+        setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        return res;
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
     return;
   }
 
