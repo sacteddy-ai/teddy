@@ -126,10 +126,16 @@ Recipe recommendation sources:
   - The backend merges both files when building recommendations.
   - You can paste recipes extracted from YouTube description ingredient lists into `recipes_youtube.json` (schema example is included in that file).
   - Set `source.type = "youtube"` and `source.url` to preserve reference metadata in recommendation responses.
-- Optional automatic live search (YouTube Data API):
-  - Add `YOUTUBE_API_KEY` and call recommendations with `include_live=true` (default).
-  - The API searches YouTube automatically using current inventory terms and returns reference links.
-  - Optional tuning: `ENABLE_LIVE_RECIPE_SEARCH=true`, `YOUTUBE_SEARCH_MAX_RESULTS=10`, `YOUTUBE_SEARCH_REGION=KR`.
+- Optional automatic live search (multi-source):
+  - Enabled by `include_live=true` (default) on `GET /api/v1/recommendations/recipes`.
+  - Sources supported:
+    - YouTube (`YOUTUBE_API_KEY`)
+    - Naver Blog/Web (`NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`)
+    - Google Custom Search (`GOOGLE_SEARCH_API_KEY`, `GOOGLE_SEARCH_CX`)
+    - Recipe-site fallback (`TheMealDB`, no key required)
+  - Provider order can be tuned with:
+    - `LIVE_RECIPE_PROVIDER_ORDER=youtube,naver_blog,naver_web,google,themealdb`
+  - Response includes `data.live.providers[]` with per-provider `count/query/error/warning`.
 
 Vision API environment variables:
 
@@ -153,11 +159,29 @@ $env:OPENAI_TEXT_CLASSIFIER_MODEL = "gpt-4.1-mini"
 $env:OPENAI_TEXT_CLASSIFIER_MAX_ITEMS = "12"
 $env:OPENAI_TEXT_CLASSIFIER_CACHE_DAYS = "30"
 
-# optional (automatic live recipe search from YouTube)
+# optional (automatic live recipe search - multi provider)
 $env:YOUTUBE_API_KEY = "AIza..."
 $env:ENABLE_LIVE_RECIPE_SEARCH = "true"
 $env:YOUTUBE_SEARCH_MAX_RESULTS = "10"
 $env:YOUTUBE_SEARCH_REGION = "KR"
+$env:YOUTUBE_SEARCH_CATEGORY_ID = "26"
+
+# optional (Naver search: blog + web)
+$env:NAVER_CLIENT_ID = "..."
+$env:NAVER_CLIENT_SECRET = "..."
+$env:NAVER_SEARCH_MAX_RESULTS = "8"
+
+# optional (Google Programmable Search Engine)
+$env:GOOGLE_SEARCH_API_KEY = "AIza..."
+$env:GOOGLE_SEARCH_CX = "..."
+$env:GOOGLE_SEARCH_MAX_RESULTS = "8"
+
+# optional (recipe-site fallback)
+$env:ENABLE_THEMEALDB_SEARCH = "true"
+$env:THEMEALDB_SEARCH_MAX_RESULTS = "8"
+
+# optional provider priority
+$env:LIVE_RECIPE_PROVIDER_ORDER = "youtube,naver_blog,naver_web,google,themealdb"
 
 # optional SAM3 segmentation hook
 $env:SAM3_SEGMENT_API_URL = "https://your-sam3-service/segment"

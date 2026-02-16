@@ -3626,78 +3626,211 @@ async function loadInventory() {
   renderInventoryFromCache();
 }
 
-function renderRecipeList(items) {
+function normalizeRecipeProvider(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return "seed";
+  }
+  if (raw === "google_web") {
+    return "google";
+  }
+  if (raw === "themealdb") {
+    return "recipe_site";
+  }
+  if (raw === "catalog") {
+    return "seed";
+  }
+  return raw;
+}
+
+function getRecipeProviderFromItem(item) {
+  const sourceProvider = String(item?.source_provider || "").trim();
+  if (sourceProvider) {
+    return normalizeRecipeProvider(sourceProvider);
+  }
+  return normalizeRecipeProvider(item?.source_type || "seed");
+}
+
+function recipeProviderLabel(provider) {
+  const key = normalizeRecipeProvider(provider);
+  if (currentLang === "ko") {
+    const labelsKo = {
+      youtube: "유튜브",
+      naver_blog: "네이버 블로그",
+      naver_web: "네이버 웹",
+      google: "구글",
+      recipe_site: "레시피 사이트",
+      seed: "기본 레시피",
+      other: "기타"
+    };
+    return labelsKo[key] || labelsKo.other;
+  }
+
+  const labelsEn = {
+    youtube: "YouTube",
+    naver_blog: "Naver Blog",
+    naver_web: "Naver Web",
+    google: "Google",
+    recipe_site: "Recipe Sites",
+    seed: "Catalog",
+    other: "Other"
+  };
+  return labelsEn[key] || labelsEn.other;
+}
+
+function buildRecipeGroups(payload) {
+  const groups = [];
+  const groupedFromApi = Array.isArray(payload?.grouped_items) ? payload.grouped_items : [];
+  if (groupedFromApi.length > 0) {
+    for (const row of groupedFromApi) {
+      const provider = normalizeRecipeProvider(row?.provider || "");
+      const items = Array.isArray(row?.items) ? row.items : [];
+      if (items.length === 0) {
+        continue;
+      }
+      groups.push({
+        provider,
+        items
+      });
+    }
+    if (groups.length > 0) {
+      return groups;
+    }
+  }
+
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  const map = new Map();
+  for (const item of rows) {
+    const provider = getRecipeProviderFromItem(item);
+    if (!map.has(provider)) {
+      map.set(provider, []);
+    }
+    map.get(provider).push(item);
+  }
+
+  const defaultOrder = ["youtube", "naver_blog", "naver_web", "google", "recipe_site", "seed"];
+  const seen = new Set();
+  for (const provider of defaultOrder) {
+    const items = map.get(provider);
+    if (items && items.length > 0) {
+      seen.add(provider);
+      groups.push({ provider, items });
+    }
+  }
+  for (const [provider, items] of map.entries()) {
+    if (seen.has(provider)) {
+      continue;
+    }
+    groups.push({ provider, items });
+  }
+  return groups;
+}
+
+function buildRecipeNode(r) {
+  const node = document.createElement("div");
+  node.className = "item";
+  const missingKeys = Array.isArray(r.missing_ingredient_keys) ? r.missing_ingredient_keys : [];
+  const missing = missingKeys
+    .map((k) => ingredientLabel(k, k))
+    .filter((v) => String(v || "").trim())
+    .join(", ");
+
+  const main = document.createElement("div");
+  main.className = "item-main";
+
+  const name = document.createElement("strong");
+  name.className = "name";
+  name.textContent = String(r.recipe_name || "").trim() || String(r.recipe_id || "");
+  main.appendChild(name);
+
+  const metaLine = document.createElement("span");
+  metaLine.className = "meta";
+  metaLine.textContent = tf("meta_recipe_line", {
+    chef: r.chef,
+    score: r.score,
+    match: `${(r.match_ratio * 100).toFixed(0)}`
+  });
+  main.appendChild(metaLine);
+
+  const metaMissing = document.createElement("span");
+  metaMissing.className = "meta";
+  metaMissing.textContent = tf("meta_recipe_missing", { missing: missing || t("word_none") });
+  main.appendChild(metaMissing);
+
+  if (r?.source_type) {
+    const sourceMeta = document.createElement("span");
+    sourceMeta.className = "meta";
+
+    const sourceLabel = [
+      String(r.source_channel || "").trim(),
+      String(r.source_title || "").trim()
+    ]
+      .filter((v) => v)
+      .join(" | ");
+
+    sourceMeta.appendChild(document.createTextNode(`${t("word_source")}: ${sourceLabel || String(r.source_type)}`));
+    if (r?.source_url) {
+      sourceMeta.appendChild(document.createTextNode(" "));
+      const link = document.createElement("a");
+      link.href = String(r.source_url);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = t("word_link");
+      sourceMeta.appendChild(link);
+    }
+    main.appendChild(sourceMeta);
+  }
+
+  const side = document.createElement("div");
+  side.className = "item-side";
+  side.appendChild(statusBadge(r.can_make_now ? "fresh" : "expiring_soon"));
+
+  node.appendChild(main);
+  node.appendChild(side);
+  return node;
+}
+
+function renderRecipeList(payload) {
   const list = $("recipeList");
   list.innerHTML = "";
 
-  if (!items.length) {
+  const groups = buildRecipeGroups(payload || {});
+  if (groups.length === 0) {
     list.appendChild(emptyNode(t("empty_recipes")));
     return;
   }
 
-  items.forEach((r) => {
-    const node = document.createElement("div");
-    node.className = "item";
-    const missingKeys = Array.isArray(r.missing_ingredient_keys) ? r.missing_ingredient_keys : [];
-    const missing = missingKeys
-      .map((k) => ingredientLabel(k, k))
-      .filter((v) => String(v || "").trim())
-      .join(", ");
+  const groupHost = document.createElement("div");
+  groupHost.className = "recipe-groups";
+  groups.forEach((group) => {
+    const section = document.createElement("section");
+    section.className = "recipe-group";
 
-    const main = document.createElement("div");
-    main.className = "item-main";
+    const head = document.createElement("div");
+    head.className = "recipe-group-head";
 
-    const name = document.createElement("strong");
-    name.className = "name";
-    name.textContent = String(r.recipe_name || "").trim() || String(r.recipe_id || "");
-    main.appendChild(name);
+    const title = document.createElement("h3");
+    title.className = "recipe-group-title";
+    title.textContent = recipeProviderLabel(group.provider);
 
-    const metaLine = document.createElement("span");
-    metaLine.className = "meta";
-    metaLine.textContent = tf("meta_recipe_line", {
-      chef: r.chef,
-      score: r.score,
-      match: `${(r.match_ratio * 100).toFixed(0)}`
+    const count = document.createElement("span");
+    count.className = "recipe-group-count";
+    count.textContent = `${group.items.length}`;
+
+    head.appendChild(title);
+    head.appendChild(count);
+    section.appendChild(head);
+
+    const subList = document.createElement("div");
+    subList.className = "list";
+    group.items.forEach((item) => {
+      subList.appendChild(buildRecipeNode(item));
     });
-    main.appendChild(metaLine);
-
-    const metaMissing = document.createElement("span");
-    metaMissing.className = "meta";
-    metaMissing.textContent = tf("meta_recipe_missing", { missing: missing || t("word_none") });
-    main.appendChild(metaMissing);
-
-    if (r?.source_type) {
-      const sourceMeta = document.createElement("span");
-      sourceMeta.className = "meta";
-
-      const sourceLabel = [
-        String(r.source_channel || "").trim(),
-        String(r.source_title || "").trim()
-      ]
-        .filter((v) => v)
-        .join(" | ");
-
-      sourceMeta.appendChild(document.createTextNode(`${t("word_source")}: ${sourceLabel || String(r.source_type)}`));
-      if (r?.source_url) {
-        sourceMeta.appendChild(document.createTextNode(" "));
-        const link = document.createElement("a");
-        link.href = String(r.source_url);
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = t("word_link");
-        sourceMeta.appendChild(link);
-      }
-      main.appendChild(sourceMeta);
-    }
-
-    const side = document.createElement("div");
-    side.className = "item-side";
-    side.appendChild(statusBadge(r.can_make_now ? "fresh" : "expiring_soon"));
-
-    node.appendChild(main);
-    node.appendChild(side);
-    list.appendChild(node);
+    section.appendChild(subList);
+    groupHost.appendChild(section);
   });
+
+  list.appendChild(groupHost);
 }
 
 async function loadRecipes() {
@@ -3705,7 +3838,7 @@ async function loadRecipes() {
   const userId = getUserId();
   const q = encodeQuery({ user_id: userId, top_n: 8, ui_lang: currentLang });
   const result = await request(`/api/v1/recommendations/recipes?${q}`, { method: "GET" });
-  renderRecipeList(result.data.items || []);
+  renderRecipeList(result.data || {});
 }
 
 function renderShopping(items) {

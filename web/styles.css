@@ -572,6 +572,42 @@ textarea {
   gap: 8px;
 }
 
+.recipe-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.recipe-group {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.recipe-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.recipe-group-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recipe-group-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .item {
   border: 1px solid var(--line);
   border-radius: 12px;
