@@ -45,6 +45,11 @@ let ingredientLabelsByKey = new Map();
 let ingredientLabelsLoadPromise = null;
 let ingredientLabelsLoadUserId = "";
 
+const INGREDIENT_KEY_LABEL_FALLBACK = {
+  onion: { en: "Onion", ko: "양파" },
+  green_onion: { en: "Green Onion", ko: "대파" }
+};
+
 let inventoryItemsCache = [];
 let inventoryFilterStorage = "refrigerated";
 let inventorySelectedIds = new Set();
@@ -625,6 +630,11 @@ function ingredientLabel(ingredientKey, fallback = "") {
   const entry = k ? ingredientLabelsByKey.get(k) : null;
   if (entry) {
     return currentLang === "ko" ? entry.ko : entry.en;
+  }
+
+  if (k && INGREDIENT_KEY_LABEL_FALLBACK[k]) {
+    const row = INGREDIENT_KEY_LABEL_FALLBACK[k];
+    return (currentLang === "ko" ? row.ko : row.en) || row.en || k;
   }
 
   const rawFallback = String(fallback || "").trim();
