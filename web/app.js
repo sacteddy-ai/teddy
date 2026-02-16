@@ -1053,6 +1053,7 @@ function extractVisionLabelFromSpeech(rawText) {
     /^(?:\uC774|\uC800|\uADF8)\s*\uC810(?:\uC740|\uC774|\uC744)?\s*/u,
     /^\uC810\s*\d+\s*/u,
     /^\uC2A4\uD31F\s*\d+\s*/u,
+    /^(?:[0-9]{1,2}|[A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*/u,
     /^spot\s*\d+\s*/i,
     /^(?:this|that)\s+is\s+/i,
     /^(?:it|this|that)\s+/i
@@ -1101,6 +1102,101 @@ function extractVisionLabelFromSpeech(rawText) {
   return text;
 }
 
+function parseSpokenOrdinalIndexToken(rawToken) {
+  const token = String(rawToken || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (!token) {
+    return null;
+  }
+
+  if (/^\d{1,2}$/.test(token)) {
+    const n = Number.parseInt(token, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  const directMap = {
+    "\uC77C": 1,
+    "\uD55C": 1,
+    "\uD558\uB098": 1,
+    "\uCCAB": 1,
+    "\uC774": 2,
+    "\uB450": 2,
+    "\uB458": 2,
+    "\uC0BC": 3,
+    "\uC138": 3,
+    "\uC14B": 3,
+    "\uC0AC": 4,
+    "\uB124": 4,
+    "\uB137": 4,
+    "\uC624": 5,
+    "\uB2E4\uC12F": 5,
+    "\uC721": 6,
+    "\uC5EC\uC12F": 6,
+    "\uCE60": 7,
+    "\uC77C\uACF1": 7,
+    "\uD314": 8,
+    "\uC5EC\uB35F": 8,
+    "\uAD6C": 9,
+    "\uC544\uD649": 9,
+    "\uC2ED": 10,
+    "\uC5F4": 10,
+    "\uC5F4\uD55C": 11,
+    "\uC5F4\uD558\uB098": 11,
+    "\uC5F4\uB450": 12,
+    "\uC5F4\uB458": 12,
+    "\uC5F4\uC138": 13,
+    "\uC5F4\uC14B": 13,
+    "\uC5F4\uB124": 14,
+    "\uC5F4\uB137": 14,
+    "\uC5F4\uB2E4\uC12F": 15,
+    "\uC5F4\uC5EC\uC12F": 16,
+    "\uC5F4\uC77C\uACF1": 17,
+    "\uC5F4\uC5EC\uB35F": 18,
+    "\uC5F4\uC544\uD649": 19,
+    "\uC2A4\uBB34": 20,
+    "\uC2A4\uBB3C": 20
+  };
+
+  if (Object.prototype.hasOwnProperty.call(directMap, token)) {
+    return directMap[token];
+  }
+
+  const sinoDigit = {
+    "\uC77C": 1,
+    "\uC774": 2,
+    "\uC0BC": 3,
+    "\uC0AC": 4,
+    "\uC624": 5,
+    "\uC721": 6,
+    "\uCE60": 7,
+    "\uD314": 8,
+    "\uAD6C": 9
+  };
+
+  if (/^[\uC77C\uC774\uC0BC\uC0AC\uC624\uC721\uCE60\uD314\uAD6C\uC2ED]+$/u.test(token)) {
+    if (token === "\uC2ED") {
+      return 10;
+    }
+    const idx = token.indexOf("\uC2ED");
+    if (idx < 0) {
+      return sinoDigit[token] || null;
+    }
+    const leftToken = token.slice(0, idx);
+    const rightToken = token.slice(idx + 1);
+    const tens = leftToken ? sinoDigit[leftToken] : 1;
+    const ones = rightToken ? sinoDigit[rightToken] : 0;
+    if (!Number.isFinite(tens) || !Number.isFinite(ones)) {
+      return null;
+    }
+    const n = tens * 10 + ones;
+    return n > 0 ? n : null;
+  }
+
+  return null;
+}
+
 function parseVisionOrdinalRelabelIntent(rawText) {
   const text = String(rawText || "").trim();
   if (!text) {
@@ -1108,7 +1204,7 @@ function parseVisionOrdinalRelabelIntent(rawText) {
   }
 
   const patterns = [
-    /(?:^|\s)(\d{1,2})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*(.+)$/u,
+    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*(.+)$/u,
     /(?:^|\s)(?:spot|item)\s*(\d{1,2})\s*(?:is|=|:)?\s*(.+)$/i,
     /(?:^|\s)(\d{1,2})(?:st|nd|rd|th)\s*(?:item)?\s*(?:is|=|:)?\s*(.+)$/i
   ];
@@ -1118,9 +1214,9 @@ function parseVisionOrdinalRelabelIntent(rawText) {
     if (!m) {
       continue;
     }
-    const index = Number.parseInt(m[1], 10);
+    const index = parseSpokenOrdinalIndexToken(m[1]);
     if (!Number.isFinite(index) || index < 1) {
-      return null;
+      continue;
     }
 
     const tail = String(m[2] || "").trim();
@@ -3046,37 +3142,6 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   realtimeRecentSpeechTexts = [...recentContext, text].slice(-4);
   const suppressContextRepair = now - Number(realtimeLastVisionRelabelAt || 0) < 12000;
 
-  const ordinalRelabel = parseVisionOrdinalRelabelIntent(text);
-  if (ordinalRelabel) {
-    const targetObj = getVisionObjectByOrdinal(ordinalRelabel.index);
-    if (!targetObj?.id) {
-      const msg = `target spot #${ordinalRelabel.index} not found`;
-      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
-      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
-      return;
-    }
-
-    visionRelabelTargetId = "";
-    setRealtimeStatus(tf("voice_heard", { text }));
-    appendRealtimeLogLine("label", `${ordinalRelabel.index}: ${ordinalRelabel.label}`);
-
-    realtimeIngestChain = realtimeIngestChain
-      .then(() => replaceVisionObjectLabel(targetObj.id, ordinalRelabel.label, { quantity: 1, unit: "ea" }))
-      .then(() => {
-        realtimeLastVisionRelabelAt = Date.now();
-        setRealtimeStatus(t("voice_draft_updated"));
-        closeVisionInlineEditor();
-      })
-      .catch((err) => {
-        const msg = err?.message || "unknown error";
-        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
-        setGlobalError(msg);
-        setCaptureError(msg);
-        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
-      });
-    return;
-  }
-
   if (draftVoiceEditTarget) {
     const target = draftVoiceEditTarget;
     draftVoiceEditTarget = null;
@@ -3102,6 +3167,37 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then(() => {
         appendRealtimeLogLine("system", t("voice_draft_updated"));
         setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
+  const ordinalRelabel = parseVisionOrdinalRelabelIntent(text);
+  if (ordinalRelabel) {
+    const targetObj = getVisionObjectByOrdinal(ordinalRelabel.index);
+    if (!targetObj?.id) {
+      const msg = `target spot #${ordinalRelabel.index} not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+
+    visionRelabelTargetId = "";
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("label", `${ordinalRelabel.index}: ${ordinalRelabel.label}`);
+
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => replaceVisionObjectLabel(targetObj.id, ordinalRelabel.label, { quantity: 1, unit: "ea" }))
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        setRealtimeStatus(t("voice_draft_updated"));
+        closeVisionInlineEditor();
       })
       .catch((err) => {
         const msg = err?.message || "unknown error";
