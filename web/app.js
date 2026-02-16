@@ -1099,7 +1099,83 @@ function extractVisionLabelFromSpeech(rawText) {
   if (invalid) {
     return "";
   }
-  return text;
+  return normalizeVisionLabelCandidate(text);
+}
+
+function normalizeVisionLabelCandidate(rawLabel) {
+  let label = String(rawLabel || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!label) {
+    return "";
+  }
+
+  label = label.replace(/^(?:\uADF8\uB0E5|\uC74C|\uC5B4|\uC544|\uC800\uAE30)\s+/u, "");
+  label = label.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
+  if (!label) {
+    return "";
+  }
+
+  const lower = label.toLowerCase();
+  const blockedExact = new Set([
+    "\uB410\uC5B4",
+    "\uB410\uC5B4\uC694",
+    "\uB05D",
+    "\uC544\uB0D0",
+    "\uC544\uB2C8",
+    "\uC544\uB2C8\uC57C",
+    "\uCDE8\uC18C",
+    "\uADF8\uB0E5",
+    "\uC7A0\uAE50",
+    "\uC7A0\uC2DC",
+    "\uC751",
+    "\uB124",
+    "\uC5B4",
+    "\uC544",
+    "stop",
+    "cancel",
+    "done",
+    "ok",
+    "okay"
+  ]);
+  if (blockedExact.has(label) || blockedExact.has(lower)) {
+    return "";
+  }
+
+  if (label.length > 28) {
+    return "";
+  }
+
+  if (/[?!]/.test(label)) {
+    return "";
+  }
+
+  if (/[0-9A-Za-z\uAC00-\uD7A3]{1,12}\s*(?:\uBC88|\uBC88\uC9F8)/u.test(label)) {
+    return "";
+  }
+
+  if (
+    /(?:\uC65C|\uD588\uB294\uB370|\uB5A4\uB370|\uBC14\uAFD4|\uC218\uC815|\uBCC0\uACBD|\uC544\uB2C8\uB77C|\uC544\uB0D0|\uC544\uB2C8\uC57C|\uB05D|\uB410\uC5B4)/u.test(
+      label
+    )
+  ) {
+    return "";
+  }
+
+  const tokenCount = label.split(/\s+/).filter(Boolean).length;
+  if (tokenCount > 3) {
+    return "";
+  }
+
+  return label;
+}
+
+function isVisionRelabelCancelSpeech(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return false;
+  }
+  return /(?:\uB05D|\uCDE8\uC18C|\uADF8\uB9CC|\uB410\uC5B4|cancel|stop|done)/i.test(text);
 }
 
 function parseSpokenOrdinalIndexToken(rawToken) {
@@ -1204,9 +1280,9 @@ function parseVisionOrdinalRelabelIntent(rawText) {
   }
 
   const patterns = [
-    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*(.+)$/u,
-    /(?:^|\s)(?:spot|item)\s*(\d{1,2})\s*(?:is|=|:)?\s*(.+)$/i,
-    /(?:^|\s)(\d{1,2})(?:st|nd|rd|th)\s*(?:item)?\s*(?:is|=|:)?\s*(.+)$/i
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:(?:\uC740|\uB294|\uC774|\uAC00)\s*|[:=]\s*|)(.+)$/u,
+    /^\s*(?:spot|item)\s*(\d{1,2})\s*(?:is|=|:)?\s*(.+)$/i,
+    /^\s*(\d{1,2})(?:st|nd|rd|th)\s*(?:item)?\s*(?:is|=|:)?\s*(.+)$/i
   ];
 
   for (const pattern of patterns) {
@@ -1224,10 +1300,11 @@ function parseVisionOrdinalRelabelIntent(rawText) {
       return null;
     }
 
-    const label =
-      extractVisionLabelFromSpeech(tail) || tail.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
+    const label = normalizeVisionLabelCandidate(
+      extractVisionLabelFromSpeech(tail) || tail.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim()
+    );
     if (!label) {
-      return null;
+      continue;
     }
     return { index, label };
   }
@@ -3211,10 +3288,17 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
 
   if (visionRelabelTargetId) {
     const targetId = visionRelabelTargetId;
-    const extractedLabel = extractVisionLabelFromSpeech(text);
+    if (isVisionRelabelCancelSpeech(text)) {
+      visionRelabelTargetId = "";
+      appendRealtimeLogLine("label", "canceled");
+      setRealtimeStatus(t("voice_idle"));
+      return;
+    }
+
+    const extractedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(text));
     if (!extractedLabel) {
-      setRealtimeStatus(`${t("voice_draft_edit_hint")} (${text})`);
-      appendRealtimeLogLine("label", text);
+      appendRealtimeLogLine("label_ignored", text);
+      setRealtimeStatus(t("voice_draft_edit_hint"));
       return;
     }
     visionRelabelTargetId = "";
