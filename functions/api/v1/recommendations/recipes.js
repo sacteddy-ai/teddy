@@ -17,6 +17,20 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function resolveLiveOnly(context, url) {
+  const queryValue = url?.searchParams?.get("live_only");
+  if (queryValue !== null) {
+    return parseBool(queryValue, true);
+  }
+
+  const envValue = context?.env?.RECIPE_LIVE_ONLY;
+  if (envValue === null || envValue === undefined || String(envValue).trim() === "") {
+    // Default to live-only mode for this project.
+    return true;
+  }
+  return parseBool(envValue, true);
+}
+
 function hasUsableInventory(inventoryItems) {
   const rows = Array.isArray(inventoryItems) ? inventoryItems : [];
   for (const item of rows) {
@@ -279,6 +293,7 @@ export async function onRequest(context) {
     const topN = Number(url.searchParams.get("top_n") || 10);
     const uiLang = (url.searchParams.get("ui_lang") || "en").trim().toLowerCase();
     const includeLive = parseBool(url.searchParams.get("include_live"), true);
+    const liveOnly = resolveLiveOnly(context, url);
 
     const inventory = await recomputeInventoryStatuses(context, userId);
     if (!hasUsableInventory(inventory)) {
@@ -302,7 +317,10 @@ export async function onRequest(context) {
       });
     }
 
-    const seeded = await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang });
+    let seeded = [];
+    if (!liveOnly) {
+      seeded = await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang });
+    }
 
     let live = {
       items: [],
@@ -321,7 +339,8 @@ export async function onRequest(context) {
     const liveProviders = normalizeLiveProviders(live);
     const primaryProvider = pickPrimaryProvider(live, liveProviders);
 
-    const deduped = dedupeRecipes([...(live.items || []), ...seeded]);
+    const sourceItems = liveOnly ? [...(live.items || [])] : [...(live.items || []), ...seeded];
+    const deduped = dedupeRecipes(sourceItems);
     const sorted = sortRecipesForUiLang(deduped, uiLang);
     const recs = sorted.slice(0, Math.max(1, Number(topN || 10)));
     const groupedItems = buildGroupedRecipeItems(recs, liveProviders);
@@ -334,6 +353,7 @@ export async function onRequest(context) {
         ui_lang: uiLang,
         live: {
           include_live: includeLive,
+          live_only: liveOnly,
           provider: primaryProvider,
           enabled: Boolean(live.enabled),
           count: Number(live.count || 0),
