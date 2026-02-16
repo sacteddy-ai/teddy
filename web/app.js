@@ -15,6 +15,7 @@ let realtimeIngestChain = Promise.resolve();
 let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
 let realtimeRecentSpeechTexts = [];
+let realtimeLastVisionRelabelAt = 0;
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
@@ -840,6 +841,15 @@ function getVisionObjectById(objectId) {
   return (visionObjectsCache || []).find((o) => String(o?.id || "").trim() === id) || null;
 }
 
+function getVisionObjectByOrdinal(index) {
+  const n = Number.parseInt(index, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return null;
+  }
+  const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache : [];
+  return arr[n - 1] || null;
+}
+
 function roundVisionBboxValue(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -1089,6 +1099,44 @@ function extractVisionLabelFromSpeech(rawText) {
     return "";
   }
   return text;
+}
+
+function parseVisionOrdinalRelabelIntent(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return null;
+  }
+
+  const patterns = [
+    /(?:^|\s)(\d{1,2})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*(.+)$/u,
+    /(?:^|\s)(?:spot|item)\s*(\d{1,2})\s*(?:is|=|:)?\s*(.+)$/i,
+    /(?:^|\s)(\d{1,2})(?:st|nd|rd|th)\s*(?:item)?\s*(?:is|=|:)?\s*(.+)$/i
+  ];
+
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (!m) {
+      continue;
+    }
+    const index = Number.parseInt(m[1], 10);
+    if (!Number.isFinite(index) || index < 1) {
+      return null;
+    }
+
+    const tail = String(m[2] || "").trim();
+    if (!tail) {
+      return null;
+    }
+
+    const label =
+      extractVisionLabelFromSpeech(tail) || tail.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
+    if (!label) {
+      return null;
+    }
+    return { index, label };
+  }
+
+  return null;
 }
 
 function findVisionObjectAt(nx, ny, rect = null) {
@@ -2942,6 +2990,7 @@ function stopRealtimeVoice() {
   realtimeLastIngestedText = "";
   realtimeLastIngestedAt = 0;
   realtimeRecentSpeechTexts = [];
+  realtimeLastVisionRelabelAt = 0;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -2995,6 +3044,38 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   realtimeLastIngestedAt = now;
   const recentContext = Array.isArray(realtimeRecentSpeechTexts) ? realtimeRecentSpeechTexts.slice(-2) : [];
   realtimeRecentSpeechTexts = [...recentContext, text].slice(-4);
+  const suppressContextRepair = now - Number(realtimeLastVisionRelabelAt || 0) < 12000;
+
+  const ordinalRelabel = parseVisionOrdinalRelabelIntent(text);
+  if (ordinalRelabel) {
+    const targetObj = getVisionObjectByOrdinal(ordinalRelabel.index);
+    if (!targetObj?.id) {
+      const msg = `target spot #${ordinalRelabel.index} not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+
+    visionRelabelTargetId = "";
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("label", `${ordinalRelabel.index}: ${ordinalRelabel.label}`);
+
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => replaceVisionObjectLabel(targetObj.id, ordinalRelabel.label, { quantity: 1, unit: "ea" }))
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        setRealtimeStatus(t("voice_draft_updated"));
+        closeVisionInlineEditor();
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
 
   if (draftVoiceEditTarget) {
     const target = draftVoiceEditTarget;
@@ -3047,6 +3128,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     realtimeIngestChain = realtimeIngestChain
       .then(() => replaceVisionObjectLabel(targetId, extractedLabel, { quantity: 1, unit: "ea" }))
       .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
         setRealtimeStatus(t("voice_draft_updated"));
         closeVisionInlineEditor();
       })
@@ -3076,7 +3158,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         let summary = data ? formatInventoryIngestSummary(data) : "";
 
         // Multi-turn repair: if this turn has no parsed food action, retry with previous speech context.
-        if (!summary && recentContext.length > 0) {
+        if (!summary && recentContext.length > 0 && !suppressContextRepair) {
           const candidates = [];
           const prev1 = String(recentContext[recentContext.length - 1] || "").trim();
           const prev2 = String(recentContext[recentContext.length - 2] || "").trim();
@@ -3228,6 +3310,7 @@ function stopBrowserSpeechRecognition() {
   const recognizer = browserSpeechRecognizer;
   browserSpeechRecognizer = null;
   browserSpeechRunning = false;
+  realtimeLastVisionRelabelAt = 0;
   visionRelabelTargetId = "";
   draftVoiceEditTarget = null;
   try {
