@@ -72,6 +72,7 @@ export async function onRequest(context) {
       throw new Error("to_label is required.");
     }
 
+    const quantityProvided = payload?.quantity !== undefined && payload?.quantity !== null;
     const quantity = coerceQuantity(payload?.quantity);
     const unit = coerceUnit(payload?.unit);
 
@@ -98,7 +99,7 @@ export async function onRequest(context) {
       const fromEntry =
         currentDraft.find((i) => normalizeIngredientKey(i?.ingredient_key || "") === fromKey) || null;
       const fromQty = fromEntry ? Number(fromEntry.quantity || 0) : 0;
-      if (Number.isFinite(fromQty) && fromQty > 0) {
+      if (!quantityProvided && Number.isFinite(fromQty) && fromQty > 0) {
         effectiveQuantity = Math.round(fromQty * 100) / 100;
       }
       if (fromEntry?.unit) {

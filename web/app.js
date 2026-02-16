@@ -22,6 +22,7 @@ let realtimeQuotaBlocked = false;
 
 let visionLastImageDataUrl = "";
 let visionObjectsCache = [];
+let captureDraftItemsCache = [];
 let visionSelectedObjectId = "";
 let visionRelabelTargetId = "";
 let draftVoiceEditTarget = null; // { ingredient_key, quantity, unit, display_name }
@@ -1273,6 +1274,131 @@ function parseSpokenOrdinalIndexToken(rawToken) {
   return null;
 }
 
+function parseSpokenCountToken(rawToken) {
+  const base = String(rawToken || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (!base) {
+    return null;
+  }
+
+  const token = base.replace(
+    /(?:\uAC1C|\uAC1C\uC57C|\uAC1C\uC694|\uAC1C\uC608\uC694|\uAC1C\uC785\uB2C8\uB2E4|\uBCD1|\uBCD1\uC774\uC57C|\uBCD1\uC785\uB2C8\uB2E4|\uBCD1\uC774\uC5D0\uC694|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)$/u,
+    ""
+  );
+  const n = parseSpokenOrdinalIndexToken(token || base);
+  if (!Number.isFinite(n) || n <= 0) {
+    return null;
+  }
+  return n;
+}
+
+function normalizeVoiceIngredientPhrase(rawPhrase) {
+  return String(rawPhrase || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[_-]/g, "")
+    .replace(/[^\uAC00-\uD7A3a-z0-9]/g, "")
+    .trim();
+}
+
+function parseDraftQuantityIntent(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return null;
+  }
+  if (/(?:\uBC88|\uBC88\uC9F8)/u.test(text)) {
+    return null;
+  }
+  if (/\uC720\uD1B5\uAE30\uD55C/u.test(text)) {
+    return null;
+  }
+
+  const patterns = [
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
+  ];
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (!m) {
+      continue;
+    }
+    const phrase = String(m[1] || "").trim();
+    if (!phrase) {
+      continue;
+    }
+    const quantity = parseSpokenCountToken(m[2]);
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 200) {
+      continue;
+    }
+    return { ingredient_phrase: phrase, quantity };
+  }
+
+  return null;
+}
+
+function findDraftItemByVoicePhrase(ingredientPhrase) {
+  const target = normalizeVoiceIngredientPhrase(ingredientPhrase);
+  if (!target) {
+    return null;
+  }
+  const items = Array.isArray(captureDraftItemsCache) ? captureDraftItemsCache : [];
+  if (items.length === 0) {
+    return null;
+  }
+
+  let best = null;
+  let bestScore = -1;
+  for (const item of items) {
+    const candidates = [
+      ingredientLabel(item?.ingredient_key || "", item?.ingredient_name || ""),
+      String(item?.ingredient_name || ""),
+      String(item?.ingredient_key || "").replace(/_/g, " ")
+    ];
+    for (const c of candidates) {
+      const normalized = normalizeVoiceIngredientPhrase(c);
+      if (!normalized) {
+        continue;
+      }
+      let score = 0;
+      if (normalized === target) {
+        score = 100;
+      } else if (normalized.includes(target)) {
+        score = 70;
+      } else if (target.includes(normalized)) {
+        score = 50;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+  }
+  return bestScore >= 50 ? best : null;
+}
+
+function parseVisionOrdinalTargetOnlyIntent(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return null;
+  }
+  // If this already includes a valid relabel payload, do not treat it as target-only.
+  if (parseVisionOrdinalRelabelIntent(text)) {
+    return null;
+  }
+  const m = text.match(
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?(?:\s+.*)?$/u
+  );
+  if (!m) {
+    return null;
+  }
+  const index = parseSpokenOrdinalIndexToken(m[1]);
+  if (!Number.isFinite(index) || index < 1) {
+    return null;
+  }
+  return { index };
+}
+
 function parseVisionOrdinalRelabelIntent(rawText) {
   const text = String(rawText || "").trim();
   if (!text) {
@@ -2311,6 +2437,7 @@ function renderCaptureDraft(capture) {
     return;
   }
 
+  captureDraftItemsCache = [];
   list.innerHTML = "";
   if (!capture || !capture.session) {
     meta.textContent = t("empty_capture_no_session");
@@ -2329,6 +2456,7 @@ function renderCaptureDraft(capture) {
   });
 
   const items = session.draft_items || [];
+  captureDraftItemsCache = Array.isArray(items) ? items.map((it) => ({ ...it })) : [];
   if (items.length === 0) {
     list.appendChild(emptyNode(t("empty_capture_draft")));
   } else {
@@ -3286,6 +3414,20 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     return;
   }
 
+  const ordinalTargetOnly = parseVisionOrdinalTargetOnlyIntent(text);
+  if (ordinalTargetOnly) {
+    const targetObj = getVisionObjectByOrdinal(ordinalTargetOnly.index);
+    if (!targetObj?.id) {
+      const msg = `target spot #${ordinalTargetOnly.index} not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+    setVisionRelabelTarget(targetObj.id, { announce: true });
+    appendRealtimeLogLine("label_target", `${ordinalTargetOnly.index}`);
+    return;
+  }
+
   if (visionRelabelTargetId) {
     const targetId = visionRelabelTargetId;
     if (isVisionRelabelCancelSpeech(text)) {
@@ -3320,6 +3462,36 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
       });
     return;
+  }
+
+  const draftQuantityIntent = parseDraftQuantityIntent(text);
+  if (draftQuantityIntent) {
+    const targetItem = findDraftItemByVoicePhrase(draftQuantityIntent.ingredient_phrase);
+    if (targetItem?.ingredient_key) {
+      const displayName = ingredientLabel(targetItem.ingredient_key, targetItem.ingredient_name);
+      setRealtimeStatus(tf("voice_heard", { text }));
+      appendRealtimeLogLine("draft(qty)", `${displayName} x${draftQuantityIntent.quantity}`);
+      realtimeIngestChain = realtimeIngestChain
+        .then(() =>
+          replaceCaptureDraftIngredient(
+            targetItem.ingredient_key,
+            displayName,
+            draftQuantityIntent.quantity,
+            targetItem.unit || "ea"
+          )
+        )
+        .then(() => {
+          setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        })
+        .catch((err) => {
+          const msg = err?.message || "unknown error";
+          appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+        });
+      return;
+    }
   }
 
   setRealtimeStatus(tf("voice_heard", { text }));
