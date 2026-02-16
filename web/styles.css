@@ -613,6 +613,90 @@ textarea {
   padding: 2px 8px;
 }
 
+.recipe-dish-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recipe-dish {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.recipe-dish-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.recipe-dish-summary::-webkit-details-marker {
+  display: none;
+}
+
+.recipe-dish-main {
+  min-width: 0;
+}
+
+.recipe-dish-title {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.recipe-score-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.recipe-dish-links {
+  border-top: 1px dashed var(--line);
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.recipe-link-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.recipe-link-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.recipe-link-main .name {
+  font-size: 0.9rem;
+}
+
+.recipe-link-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .item {
   border: 1px solid var(--line);
   border-radius: 12px;

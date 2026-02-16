@@ -221,6 +221,9 @@ const I18N = {
     meta_recipe_line: "{chef} | score {score} | match {match}%",
     meta_recipe_missing: "missing: {missing}",
     meta_recipe_missing_unknown: "missing: analyzing ingredients",
+    meta_recipe_link_line: "{provider} | score {score} | match {match}%",
+    recipe_cluster_links: "{count} sources",
+    recipe_title_fallback: "Recipe",
     meta_shopping_reasons: "reasons: {reasons}",
     meta_shopping_related: "related recipes: {related}",
     toast_order_draft_created: "Order draft created: {id} ({count} items)",
@@ -393,6 +396,9 @@ const I18N = {
     meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
     meta_recipe_missing: "부족: {missing}",
     meta_recipe_missing_unknown: "부족: 재료 분석 중",
+    meta_recipe_link_line: "{provider} | 점수 {score} | 매칭 {match}%",
+    recipe_cluster_links: "링크 {count}개",
+    recipe_title_fallback: "요리",
     meta_shopping_reasons: "이유: {reasons}",
     meta_shopping_related: "연관 레시피: {related}",
     toast_order_draft_created: "주문 초안 생성: {id} ({count}개)",
@@ -3790,164 +3796,287 @@ function recipeProviderLabel(provider) {
   return labelsEn[key] || labelsEn.other;
 }
 
-function buildRecipeGroups(payload) {
-  const groups = [];
-  const groupedFromApi = Array.isArray(payload?.grouped_items) ? payload.grouped_items : [];
-  if (groupedFromApi.length > 0) {
-    for (const row of groupedFromApi) {
-      const provider = normalizeRecipeProvider(row?.provider || "");
-      const items = Array.isArray(row?.items) ? row.items : [];
-      if (items.length === 0) {
-        continue;
-      }
-      groups.push({
-        provider,
-        items
-      });
-    }
-    if (groups.length > 0) {
-      return groups;
-    }
-  }
+const RECIPE_DISH_STOPWORDS = new Set([
+  "recipe",
+  "recipes",
+  "easy",
+  "quick",
+  "simple",
+  "shorts",
+  "short",
+  "asmr",
+  "home",
+  "cooking",
+  "cook",
+  "food",
+  "dish",
+  "video",
+  "레시피",
+  "요리",
+  "만들기",
+  "만드는법",
+  "만드는",
+  "초간단",
+  "간단",
+  "쉬운",
+  "홈쿡",
+  "자취",
+  "브이로그"
+]);
 
-  const rows = Array.isArray(payload?.items) ? payload.items : [];
-  const map = new Map();
-  for (const item of rows) {
-    const provider = getRecipeProviderFromItem(item);
-    if (!map.has(provider)) {
-      map.set(provider, []);
-    }
-    map.get(provider).push(item);
-  }
-
-  const defaultOrder = ["youtube", "naver_blog", "naver_web", "google", "recipe_site", "seed"];
-  const seen = new Set();
-  for (const provider of defaultOrder) {
-    const items = map.get(provider);
-    if (items && items.length > 0) {
-      seen.add(provider);
-      groups.push({ provider, items });
-    }
-  }
-  for (const [provider, items] of map.entries()) {
-    if (seen.has(provider)) {
-      continue;
-    }
-    groups.push({ provider, items });
-  }
-  return groups;
+function decodeRecipeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'");
 }
 
-function buildRecipeNode(r) {
-  const node = document.createElement("div");
-  node.className = "item";
-  const missingKeys = Array.isArray(r.missing_ingredient_keys) ? r.missing_ingredient_keys : [];
-  const missing = missingKeys
-    .map((k) => ingredientLabel(k, k))
-    .filter((v) => String(v || "").trim())
-    .join(", ");
-  const extractionStatus = String(r?.ingredient_extraction_status || "").trim().toLowerCase();
-  let missingLabel = missing || t("word_none");
-  if (!missing && (extractionStatus === "pending" || extractionStatus === "unavailable")) {
-    missingLabel = t("meta_recipe_missing_unknown");
+function compactRecipeTitle(value) {
+  let title = decodeRecipeHtmlEntities(String(value || "").trim());
+  if (!title) {
+    return "";
   }
 
-  const main = document.createElement("div");
-  main.className = "item-main";
+  title = title
+    .replace(/#[\p{L}\p{N}_-]+/gu, " ")
+    .replace(/\s+\|\s+.*$/u, "")
+    .replace(/\s+-\s+.*$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  const name = document.createElement("strong");
-  name.className = "name";
-  name.textContent = String(r.recipe_name || "").trim() || String(r.recipe_id || "");
-  main.appendChild(name);
+  if (title.length > 72) {
+    title = `${title.slice(0, 72).trim()}...`;
+  }
+  return title;
+}
 
-  const metaLine = document.createElement("span");
-  metaLine.className = "meta";
-  metaLine.textContent = tf("meta_recipe_line", {
-    chef: r.chef,
-    score: r.score,
-    match: `${(r.match_ratio * 100).toFixed(0)}`
+function recipeDishDisplayTitle(item) {
+  const fromName = compactRecipeTitle(item?.recipe_name || "");
+  if (fromName) {
+    return fromName;
+  }
+  const fromSource = compactRecipeTitle(item?.source_title || "");
+  if (fromSource) {
+    return fromSource;
+  }
+  return t("recipe_title_fallback");
+}
+
+function recipeDishKeyFromItem(item) {
+  const requiredKeys = Array.isArray(item?.required_ingredient_keys)
+    ? item.required_ingredient_keys
+        .map((k) => normalizeIngredientKeyLoose(k))
+        .filter((k) => k)
+    : [];
+
+  if (requiredKeys.length > 0) {
+    const uniqRequired = Array.from(new Set(requiredKeys)).sort();
+    return `ing:${uniqRequired.slice(0, 6).join("|")}`;
+  }
+
+  const base = recipeDishDisplayTitle(item);
+  const tokens = decodeRecipeHtmlEntities(base)
+    .toLowerCase()
+    .replace(/#[\p{L}\p{N}_-]+/gu, " ")
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .split(/\s+/)
+    .map((tkn) => tkn.trim())
+    .filter((tkn) => tkn.length >= 2 && !RECIPE_DISH_STOPWORDS.has(tkn));
+
+  if (tokens.length === 0) {
+    return `raw:${normalizeIngredientKeyLoose(base) || normalizeIngredientKeyLoose(item?.recipe_id || "")}`;
+  }
+
+  const uniq = Array.from(new Set(tokens)).sort();
+  return `tok:${uniq.slice(0, 6).join("|")}`;
+}
+
+function dedupeRecipeLinks(items) {
+  const out = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    const key = normalizeIngredientKeyLoose(String(item?.source_url || item?.recipe_id || item?.recipe_name || ""));
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function buildRecipeDishClusters(payload) {
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  const map = new Map();
+
+  for (const item of rows) {
+    const key = recipeDishKeyFromItem(item);
+    if (!key) {
+      continue;
+    }
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key).push(item);
+  }
+
+  const clusters = [];
+  for (const [key, items] of map.entries()) {
+    const deduped = dedupeRecipeLinks(items).sort((a, b) => {
+      const scoreDelta = Number(b?.score || 0) - Number(a?.score || 0);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      const matchDelta = Number(b?.match_ratio || 0) - Number(a?.match_ratio || 0);
+      if (matchDelta !== 0) {
+        return matchDelta;
+      }
+      return String(a?.recipe_name || "").localeCompare(String(b?.recipe_name || ""));
+    });
+
+    if (deduped.length === 0) {
+      continue;
+    }
+
+    const best = deduped[0];
+    let title = recipeDishDisplayTitle(best);
+    if (title.length > 44) {
+      const shortest = deduped
+        .map((item) => recipeDishDisplayTitle(item))
+        .filter((v) => v)
+        .sort((a, b) => a.length - b.length)[0];
+      if (shortest) {
+        title = shortest;
+      }
+    }
+
+    clusters.push({
+      key,
+      title,
+      score: Number(best?.score || 0),
+      match_ratio: Number(best?.match_ratio || 0),
+      items: deduped
+    });
+  }
+
+  clusters.sort((a, b) => {
+    const scoreDelta = Number(b?.score || 0) - Number(a?.score || 0);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+    return String(a?.title || "").localeCompare(String(b?.title || ""));
   });
-  main.appendChild(metaLine);
 
-  const metaMissing = document.createElement("span");
-  metaMissing.className = "meta";
-  metaMissing.textContent = tf("meta_recipe_missing", { missing: missingLabel });
-  main.appendChild(metaMissing);
+  return clusters;
+}
 
-  if (r?.source_type) {
-    const sourceMeta = document.createElement("span");
-    sourceMeta.className = "meta";
+function formatRecipeScore(value) {
+  const n = Number(value);
+  const score = Number.isFinite(n) ? Math.round(n) : 0;
+  return currentLang === "ko" ? `${score}점` : `${score}`;
+}
 
-    const sourceLabel = [
-      String(r.source_channel || "").trim(),
-      String(r.source_title || "").trim()
-    ]
-      .filter((v) => v)
-      .join(" | ");
+function formatRecipeMatchPercent(value) {
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio)) {
+    return "0";
+  }
+  return String(Math.round(Math.max(0, Math.min(1, ratio)) * 100));
+}
 
-    sourceMeta.appendChild(document.createTextNode(`${t("word_source")}: ${sourceLabel || String(r.source_type)}`));
-    if (r?.source_url) {
-      sourceMeta.appendChild(document.createTextNode(" "));
+function buildRecipeDishNode(cluster) {
+  const details = document.createElement("details");
+  details.className = "recipe-dish";
+
+  const summary = document.createElement("summary");
+  summary.className = "recipe-dish-summary";
+
+  const summaryMain = document.createElement("div");
+  summaryMain.className = "recipe-dish-main";
+
+  const title = document.createElement("strong");
+  title.className = "recipe-dish-title";
+  title.textContent = String(cluster?.title || "").trim() || t("recipe_title_fallback");
+  summaryMain.appendChild(title);
+
+  const score = document.createElement("span");
+  score.className = "recipe-score-chip";
+  score.textContent = formatRecipeScore(cluster?.score);
+
+  summary.appendChild(summaryMain);
+  summary.appendChild(score);
+  details.appendChild(summary);
+
+  const linksWrap = document.createElement("div");
+  linksWrap.className = "recipe-dish-links";
+
+  const linksMeta = document.createElement("span");
+  linksMeta.className = "meta";
+  linksMeta.textContent = tf("recipe_cluster_links", { count: (cluster?.items || []).length });
+  linksWrap.appendChild(linksMeta);
+
+  (cluster?.items || []).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "recipe-link-item";
+
+    const main = document.createElement("div");
+    main.className = "recipe-link-main";
+
+    const name = document.createElement("strong");
+    name.className = "name";
+    name.textContent = compactRecipeTitle(item?.source_title || item?.recipe_name || item?.recipe_id || "");
+    main.appendChild(name);
+
+    const provider = recipeProviderLabel(getRecipeProviderFromItem(item));
+    const meta = document.createElement("span");
+    meta.className = "recipe-link-meta";
+    meta.textContent = tf("meta_recipe_link_line", {
+      provider,
+      score: Math.round(Number(item?.score || 0)),
+      match: formatRecipeMatchPercent(item?.match_ratio)
+    });
+    main.appendChild(meta);
+    row.appendChild(main);
+
+    const side = document.createElement("div");
+    side.className = "item-side";
+    if (item?.source_url) {
       const link = document.createElement("a");
-      link.href = String(r.source_url);
+      link.className = "btn tiny ghost";
+      link.href = String(item.source_url);
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.textContent = t("word_link");
-      sourceMeta.appendChild(link);
+      side.appendChild(link);
     }
-    main.appendChild(sourceMeta);
-  }
+    row.appendChild(side);
 
-  const side = document.createElement("div");
-  side.className = "item-side";
-  side.appendChild(statusBadge(r.can_make_now ? "fresh" : "expiring_soon"));
+    linksWrap.appendChild(row);
+  });
 
-  node.appendChild(main);
-  node.appendChild(side);
-  return node;
+  details.appendChild(linksWrap);
+  return details;
 }
 
 function renderRecipeList(payload) {
   const list = $("recipeList");
   list.innerHTML = "";
 
-  const groups = buildRecipeGroups(payload || {});
-  if (groups.length === 0) {
+  const clusters = buildRecipeDishClusters(payload || {});
+  if (clusters.length === 0) {
     list.appendChild(emptyNode(t("empty_recipes")));
     return;
   }
 
-  const groupHost = document.createElement("div");
-  groupHost.className = "recipe-groups";
-  groups.forEach((group) => {
-    const section = document.createElement("section");
-    section.className = "recipe-group";
-
-    const head = document.createElement("div");
-    head.className = "recipe-group-head";
-
-    const title = document.createElement("h3");
-    title.className = "recipe-group-title";
-    title.textContent = recipeProviderLabel(group.provider);
-
-    const count = document.createElement("span");
-    count.className = "recipe-group-count";
-    count.textContent = `${group.items.length}`;
-
-    head.appendChild(title);
-    head.appendChild(count);
-    section.appendChild(head);
-
-    const subList = document.createElement("div");
-    subList.className = "list";
-    group.items.forEach((item) => {
-      subList.appendChild(buildRecipeNode(item));
-    });
-    section.appendChild(subList);
-    groupHost.appendChild(section);
+  const host = document.createElement("div");
+  host.className = "recipe-dish-list";
+  clusters.forEach((cluster) => {
+    host.appendChild(buildRecipeDishNode(cluster));
   });
 
-  list.appendChild(groupHost);
+  list.appendChild(host);
 }
 
 async function loadRecipes() {
