@@ -25,6 +25,9 @@ let visionSelectedObjectId = "";
 let visionRelabelTargetId = "";
 let draftVoiceEditTarget = null; // { ingredient_key, quantity, unit, display_name }
 let visionEditMode = "select"; // select | add
+let visionPointerState = null;
+let visionLastTapAt = 0;
+let visionLastTapObjectId = "";
 
 let browserSpeechRecognizer = null;
 let browserSpeechRunning = false;
@@ -742,6 +745,10 @@ function clearVisionObjectPreview() {
   visionSelectedObjectId = "";
   visionRelabelTargetId = "";
   visionEditMode = "select";
+  visionPointerState = null;
+  visionLastTapAt = 0;
+  visionLastTapObjectId = "";
+  closeVisionInlineEditor();
 
   const panel = $("visionObjectPanel");
   if (panel) {
@@ -776,6 +783,9 @@ function setVisionObjectsPreview(imageDataUrl, objects) {
 function setVisionEditMode(nextMode) {
   const mode = String(nextMode || "").trim().toLowerCase();
   visionEditMode = mode === "add" ? "add" : "select";
+  if (visionEditMode === "add") {
+    closeVisionInlineEditor();
+  }
 
   const addBtn = $("visionAddBoxBtn");
   if (addBtn) {
@@ -855,6 +865,266 @@ function syncVisionObjectSelectionUI() {
   });
 }
 
+function getVisionObjectById(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return null;
+  }
+  return (visionObjectsCache || []).find((o) => String(o?.id || "").trim() === id) || null;
+}
+
+function roundVisionBboxValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return Math.round(n * 10000) / 10000;
+}
+
+function updateVisionObjectBbox(objectId, bbox) {
+  const id = String(objectId || "").trim();
+  if (!id || !bbox) {
+    return null;
+  }
+  const idx = (visionObjectsCache || []).findIndex((o) => String(o?.id || "").trim() === id);
+  if (idx < 0) {
+    return null;
+  }
+  const next = {
+    x: roundVisionBboxValue(clamp(bbox.x, 0, 1)),
+    y: roundVisionBboxValue(clamp(bbox.y, 0, 1)),
+    w: roundVisionBboxValue(clamp(bbox.w, 0.01, 1)),
+    h: roundVisionBboxValue(clamp(bbox.h, 0.01, 1))
+  };
+  next.x = roundVisionBboxValue(clamp(next.x, 0, Math.max(0, 1 - next.w)));
+  next.y = roundVisionBboxValue(clamp(next.y, 0, Math.max(0, 1 - next.h)));
+  visionObjectsCache[idx] = {
+    ...visionObjectsCache[idx],
+    bbox: next
+  };
+  return visionObjectsCache[idx];
+}
+
+function getVisionObjectCenter(obj) {
+  const bb = obj?.bbox;
+  if (!bb) {
+    return null;
+  }
+  const x = Number(bb.x);
+  const y = Number(bb.y);
+  const w = Number(bb.w);
+  const h = Number(bb.h);
+  if (![x, y, w, h].every(Number.isFinite)) {
+    return null;
+  }
+  return {
+    x: x + w / 2,
+    y: y + h / 2
+  };
+}
+
+function isVoiceCaptureRunning() {
+  return isRealtimeConnected() || browserSpeechRunning;
+}
+
+function setVisionRelabelTarget(objectId, options = {}) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    visionRelabelTargetId = "";
+    return;
+  }
+  visionRelabelTargetId = id;
+  if (options?.select !== false) {
+    selectVisionObject(id);
+  }
+  if (options?.announce !== false) {
+    const obj = getVisionObjectById(id);
+    const label = obj ? getVisionObjectDisplayLabel(obj) : "";
+    const summary = label || id;
+    setRealtimeStatus(`${t("btn_edit_label_voice")}: ${summary}. ${t("voice_draft_edit_hint")}`);
+  }
+}
+
+function getVisionInlineEditorElements() {
+  return {
+    editor: $("visionInlineEditor"),
+    input: $("visionInlineInput"),
+    saveBtn: $("visionInlineSaveBtn"),
+    cancelBtn: $("visionInlineCancelBtn"),
+    voiceBtn: $("visionInlineVoiceBtn")
+  };
+}
+
+function closeVisionInlineEditor() {
+  const { editor, input } = getVisionInlineEditorElements();
+  if (!editor) {
+    return;
+  }
+  editor.hidden = true;
+  editor.removeAttribute("data-object-id");
+  if (input) {
+    input.value = "";
+  }
+}
+
+function positionVisionInlineEditor() {
+  const { editor } = getVisionInlineEditorElements();
+  if (!editor || editor.hidden) {
+    return;
+  }
+
+  const objectId = String(editor.dataset.objectId || "").trim();
+  const obj = getVisionObjectById(objectId);
+  const img = $("visionPreviewImage");
+  const stage = $("visionStage");
+  if (!obj || !img || !stage) {
+    closeVisionInlineEditor();
+    return;
+  }
+
+  const center = getVisionObjectCenter(obj);
+  if (!center) {
+    closeVisionInlineEditor();
+    return;
+  }
+
+  const imgRect = img.getBoundingClientRect();
+  const stageRect = stage.getBoundingClientRect();
+  if (!imgRect.width || !imgRect.height || !stageRect.width || !stageRect.height) {
+    return;
+  }
+
+  const px = (imgRect.left - stageRect.left) + center.x * imgRect.width;
+  const py = (imgRect.top - stageRect.top) + center.y * imgRect.height;
+
+  const margin = 10;
+  const editorRect = editor.getBoundingClientRect();
+  const w = Math.max(190, Math.min(editorRect.width || 240, stageRect.width - margin * 2));
+  const h = Math.max(74, editorRect.height || 92);
+  let left = clamp(px - w / 2, margin, Math.max(margin, stageRect.width - w - margin));
+  let top = py - h - 14;
+  if (top < margin) {
+    top = py + 14;
+  }
+  top = clamp(top, margin, Math.max(margin, stageRect.height - h - margin));
+
+  editor.style.left = `${Math.round(left)}px`;
+  editor.style.top = `${Math.round(top)}px`;
+}
+
+function openVisionInlineEditor(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return;
+  }
+  const obj = getVisionObjectById(id);
+  const { editor, input } = getVisionInlineEditorElements();
+  if (!obj || !editor || !input) {
+    return;
+  }
+
+  selectVisionObject(id);
+  editor.dataset.objectId = id;
+  input.value = getVisionObjectDisplayLabel(obj);
+  editor.hidden = false;
+  positionVisionInlineEditor();
+  input.focus();
+  input.select?.();
+}
+
+async function saveVisionInlineEditorLabel() {
+  const { editor, input, saveBtn } = getVisionInlineEditorElements();
+  if (!editor || !input) {
+    return;
+  }
+  const id = String(editor.dataset.objectId || "").trim();
+  const value = String(input.value || "").trim();
+  if (!id || !value) {
+    return;
+  }
+  if (saveBtn) {
+    saveBtn.disabled = true;
+  }
+  try {
+    await replaceVisionObjectLabel(id, value, { quantity: 1, unit: "ea" });
+    closeVisionInlineEditor();
+  } catch (err) {
+    const msg = err?.message || String(err);
+    setGlobalError(msg);
+    setCaptureError(msg);
+    throw err;
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+    }
+  }
+}
+
+function extractVisionLabelFromSpeech(rawText) {
+  let text = String(rawText || "").trim();
+  if (!text) {
+    return "";
+  }
+  text = text.replace(/\s+/g, " ").trim();
+
+  const notMatch = text.match(/\uC544\uB2C8\uB77C\s+(.+)$/u);
+  if (notMatch?.[1]) {
+    text = notMatch[1].trim();
+  }
+
+  const leadingPatterns = [
+    /^(?:\uC774|\uC800|\uADF8|\uC694)?\uAC70(?:\uB294|\uAC00|\uB97C|\uB3C4)?\s*/u,
+    /^(?:\uC774|\uC800|\uADF8)\s*\uC810(?:\uC740|\uC774|\uC744)?\s*/u,
+    /^\uC810\s*\d+\s*/u,
+    /^\uC2A4\uD31F\s*\d+\s*/u,
+    /^spot\s*\d+\s*/i,
+    /^(?:this|that)\s+is\s+/i,
+    /^(?:it|this|that)\s+/i
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of leadingPatterns) {
+      const next = text.replace(p, "");
+      if (next !== text) {
+        text = next.trim();
+        changed = true;
+      }
+    }
+  }
+
+  const trailingPatterns = [
+    /\s*(?:\uC774\uC57C|\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)\s*[.!?~]*$/u,
+    /\s*(?:\uB77C\uACE0|\uB77C\uAD6C)\s*(?:\uC785\uB825(?:\uD574\uC918)?|\uC800\uC7A5(?:\uD574\uC918)?|\uB4F1\uB85D(?:\uD574\uC918)?|\uC218\uC815(?:\uD574\uC918)?|\uBC14\uAFD4(?:\uC918)?|\uD574\uC918)?\s*[.!?~]*$/u,
+    /\s*(?:\uB85C|\uC73C\uB85C)\s*(?:\uC218\uC815|\uBCC0\uACBD|\uBC14\uAFD4)(?:\uC918|\uC8FC\uC138\uC694|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
+  ];
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of trailingPatterns) {
+      const next = text.replace(p, "");
+      if (next !== text) {
+        text = next.trim();
+        changed = true;
+      }
+    }
+  }
+
+  text = text.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const invalid =
+    /^(?:\uCD94\uAC00|\uC0AD\uC81C|\uC218\uC815|\uBCC0\uACBD|\uBC14\uAFD4|\uD574\uC918|\uD574\uC8FC\uC138\uC694|\uC785\uB825\uD574|\uC800\uC7A5\uD574|\uB4F1\uB85D\uD574|add|remove|delete|change|update)$/i.test(
+      text
+    );
+  if (invalid) {
+    return "";
+  }
+  return text;
+}
+
 function findVisionObjectAt(nx, ny, rect = null) {
   const x = Number(nx);
   const y = Number(ny);
@@ -913,6 +1183,7 @@ function drawVisionOverlay() {
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
+    closeVisionInlineEditor();
     return;
   }
 
@@ -995,6 +1266,7 @@ function drawVisionOverlay() {
     drawLabel(Math.max(0, cx + 10), Math.max(18, cy - 8), text, "#fff");
   }
 
+  positionVisionInlineEditor();
 }
 
 async function replaceVisionObjectLabel(objectId, newLabel, options = {}) {
@@ -1259,11 +1531,10 @@ function renderVisionObjectPreview(options = {}) {
         voiceBtn.addEventListener("click", async (event) => {
           event.preventDefault();
           event.stopPropagation();
-          selectVisionObject(obj?.id);
-          visionRelabelTargetId = String(obj?.id || "");
+          setVisionRelabelTarget(obj?.id, { announce: false });
           realtimeLastIngestedText = "";
           realtimeLastIngestedAt = 0;
-          setRealtimeStatus(`${t("btn_edit_label_voice")}: ${idx + 1}. ${label}`);
+          setRealtimeStatus(`${t("btn_edit_label_voice")}: ${idx + 1}. ${label}. ${t("voice_draft_edit_hint")}`);
           updateQuickTalkButton();
           try {
             if (realtimeQuotaBlocked) {
@@ -1303,6 +1574,16 @@ function renderVisionObjectPreview(options = {}) {
 
       list.appendChild(node);
     });
+  }
+
+  const { editor } = getVisionInlineEditorElements();
+  if (editor && !editor.hidden) {
+    const editId = String(editor.dataset.objectId || "").trim();
+    if (!editId || !getVisionObjectById(editId)) {
+      closeVisionInlineEditor();
+    } else {
+      positionVisionInlineEditor();
+    }
   }
 
   syncVisionObjectSelectionUI();
@@ -2925,14 +3206,21 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
 
   if (visionRelabelTargetId) {
     const targetId = visionRelabelTargetId;
+    const extractedLabel = extractVisionLabelFromSpeech(text);
+    if (!extractedLabel) {
+      setRealtimeStatus(`${t("voice_draft_edit_hint")} (${text})`);
+      appendRealtimeLogLine("label", text);
+      return;
+    }
     visionRelabelTargetId = "";
     setRealtimeStatus(tf("voice_heard", { text }));
-    appendRealtimeLogLine("label", text);
+    appendRealtimeLogLine("label", extractedLabel);
 
     realtimeIngestChain = realtimeIngestChain
-      .then(() => replaceVisionObjectLabel(targetId, text, { quantity: 1, unit: "ea" }))
+      .then(() => replaceVisionObjectLabel(targetId, extractedLabel, { quantity: 1, unit: "ea" }))
       .then(() => {
         setRealtimeStatus(t("voice_draft_updated"));
+        closeVisionInlineEditor();
       })
       .catch((err) => {
         const msg = err?.message || "unknown error";
@@ -4450,7 +4738,10 @@ function bindEvents() {
         visionSelectedObjectId = obj.id;
         setVisionEditMode("select");
         renderVisionObjectPreview({ skipImageReload: true });
-        openVisionObjectEdit(obj.id);
+        openVisionInlineEditor(obj.id);
+        if (isVoiceCaptureRunning()) {
+          setVisionRelabelTarget(obj.id, { select: false, announce: true });
+        }
         event.preventDefault();
         return;
       }
@@ -4458,20 +4749,198 @@ function bindEvents() {
       const hit = findVisionObjectAt(nx, ny, rect);
       if (hit?.id) {
         const id = String(hit.id);
-        const wasSelected = id === visionSelectedObjectId;
+        const now = Date.now();
+        const detailCount = Number(event.detail || 0);
+        const isDoubleTap =
+          detailCount >= 2 || (visionLastTapObjectId === id && now - visionLastTapAt <= 320);
+        visionLastTapObjectId = id;
+        visionLastTapAt = now;
         selectVisionObject(id);
-        if (wasSelected) {
-          openVisionObjectEdit(id);
+        if (isVoiceCaptureRunning()) {
+          setVisionRelabelTarget(id, { select: false, announce: true });
+        }
+        if (isDoubleTap) {
+          openVisionInlineEditor(id);
+          event.preventDefault();
+          return;
+        }
+
+        const bb = hit.bbox || null;
+        if (bb) {
+          visionPointerState = {
+            pointerId: event.pointerId,
+            objectId: id,
+            startNx: nx,
+            startNy: ny,
+            startBbox: {
+              x: Number(bb.x),
+              y: Number(bb.y),
+              w: Number(bb.w),
+              h: Number(bb.h)
+            },
+            moved: false
+          };
+          try {
+            canvas.setPointerCapture(event.pointerId);
+          } catch {}
         }
         event.preventDefault();
         return;
       }
+      visionPointerState = null;
       visionSelectedObjectId = "";
       syncVisionObjectSelectionUI();
+      closeVisionInlineEditor();
       drawVisionOverlay();
     };
 
+    const onMove = (event) => {
+      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      const img = $("visionPreviewImage");
+      if (!img) {
+        return;
+      }
+      const rect = img.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const nx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const ny = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      const start = visionPointerState.startBbox;
+      if (!start) {
+        return;
+      }
+
+      const dx = nx - visionPointerState.startNx;
+      const dy = ny - visionPointerState.startNy;
+      if (!visionPointerState.moved && Math.hypot(dx, dy) > 0.008) {
+        visionPointerState.moved = true;
+      }
+
+      if (visionPointerState.moved) {
+        updateVisionObjectBbox(visionPointerState.objectId, {
+          x: clamp(start.x + dx, 0, Math.max(0, 1 - start.w)),
+          y: clamp(start.y + dy, 0, Math.max(0, 1 - start.h)),
+          w: start.w,
+          h: start.h
+        });
+        drawVisionOverlay();
+      }
+      event.preventDefault();
+    };
+
+    const onUp = (event) => {
+      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      try {
+        canvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      visionPointerState = null;
+      drawVisionOverlay();
+      event.preventDefault();
+    };
+
+    const onCancel = (event) => {
+      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        return;
+      }
+      try {
+        canvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      visionPointerState = null;
+      drawVisionOverlay();
+    };
+
+    const onDoubleClick = (event) => {
+      const img = $("visionPreviewImage");
+      if (!img) {
+        return;
+      }
+      const rect = img.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const nx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const ny = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+      const hit = findVisionObjectAt(nx, ny, rect);
+      if (!hit?.id) {
+        return;
+      }
+      openVisionInlineEditor(hit.id);
+      event.preventDefault();
+    };
+
     canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+    canvas.addEventListener("dblclick", onDoubleClick);
+  }
+  if ($("visionInlineEditor")) {
+    const { editor, input, saveBtn, cancelBtn, voiceBtn } = getVisionInlineEditorElements();
+    if (saveBtn) {
+      saveBtn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        try {
+          await saveVisionInlineEditorLabel();
+        } catch {}
+      });
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        closeVisionInlineEditor();
+      });
+    }
+    if (input) {
+      input.addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          try {
+            await saveVisionInlineEditorLabel();
+          } catch {}
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeVisionInlineEditor();
+        }
+      });
+    }
+    if (voiceBtn) {
+      voiceBtn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const objectId = String(editor?.dataset?.objectId || "").trim();
+        if (!objectId) {
+          return;
+        }
+        setVisionRelabelTarget(objectId, { announce: true });
+        closeVisionInlineEditor();
+        realtimeLastIngestedText = "";
+        realtimeLastIngestedAt = 0;
+        updateQuickTalkButton();
+        try {
+          if (!isVoiceCaptureRunning()) {
+            if (realtimeQuotaBlocked) {
+              if (!isBrowserSpeechSupported()) {
+                throw new Error("Speech recognition is not supported in this browser.");
+              }
+              startBrowserSpeechRecognition();
+            } else {
+              await startRealtimeVoice();
+            }
+          }
+        } catch (err) {
+          const msg = err?.message || String(err);
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_start_failed", { msg }));
+        }
+      });
+    }
   }
   if ($("visionAddBoxBtn")) {
     $("visionAddBoxBtn").addEventListener("click", (event) => {

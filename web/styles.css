@@ -259,6 +259,37 @@ h1 {
   touch-action: none;
 }
 
+.vision-inline-editor {
+  position: absolute;
+  z-index: 5;
+  min-width: 190px;
+  max-width: min(86vw, 320px);
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(8, 12, 10, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.vision-inline-editor input {
+  width: 100%;
+  margin: 0;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  padding: 0 10px;
+  font-size: 0.95rem;
+}
+
+.vision-inline-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+
 .vision-object-actions {
   margin: 8px 0 10px;
 }

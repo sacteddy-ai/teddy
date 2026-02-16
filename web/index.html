@@ -201,6 +201,14 @@
             <div class="vision-stage" id="visionStage">
               <img id="visionPreviewImage" alt="" loading="lazy">
               <canvas id="visionPreviewCanvas"></canvas>
+              <div id="visionInlineEditor" class="vision-inline-editor" hidden>
+                <input id="visionInlineInput" type="text" autocomplete="off">
+                <div class="vision-inline-actions">
+                  <button id="visionInlineSaveBtn" type="button" class="btn tiny secondary" data-i18n="btn_save_label">Save</button>
+                  <button id="visionInlineVoiceBtn" type="button" class="btn tiny ghost" data-i18n="btn_edit_label_voice">Edit by Voice</button>
+                  <button id="visionInlineCancelBtn" type="button" class="btn tiny ghost" data-i18n="btn_cancel_label">Cancel</button>
+                </div>
+              </div>
             </div>
             <div id="visionObjectList" class="list"></div>
           </div>
