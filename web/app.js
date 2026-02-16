@@ -25,8 +25,6 @@ let visionSelectedObjectId = "";
 let visionRelabelTargetId = "";
 let draftVoiceEditTarget = null; // { ingredient_key, quantity, unit, display_name }
 let visionEditMode = "select"; // select | add
-let visionPointerState = null;
-let visionTempBbox = null;
 
 let browserSpeechRecognizer = null;
 let browserSpeechRunning = false;
@@ -120,7 +118,7 @@ const I18N = {
     seg_sam3_http: "sam3_http (require endpoint)",
     btn_analyze_image: "Analyze Image",
     vision_objects_title: "Object Labels",
-    vision_objects_hint: "Tap a box to select. Edit labels if needed.",
+    vision_objects_hint: "Tap to select a spot. Tap Add Spot, then tap image to place one. Rename by text or voice.",
     btn_edit_label: "Edit",
     btn_edit_label_voice: "Edit by Voice",
     btn_remove_one: "Remove 1",
@@ -128,7 +126,7 @@ const I18N = {
     btn_cancel_label: "Cancel",
     vision_badge_ok: "ok",
     vision_badge_low: "check",
-    btn_add_box: "Add Box",
+    btn_add_box: "Add Spot",
     btn_delete_box: "Delete",
     live_camera_summary: "Live Camera (experimental)",
     btn_start_camera: "Start Camera",
@@ -296,7 +294,7 @@ const I18N = {
     seg_sam3_http: "sam3_http (엔드포인트 필요)",
     btn_analyze_image: "이미지 분석",
     vision_objects_title: "오브젝트 라벨",
-    vision_objects_hint: "박스를 눌러 선택하고, 필요하면 이름을 수정하세요.",
+    vision_objects_hint: "스팟을 눌러 선택하세요. '스팟 추가'를 누르고 사진을 탭해 추가한 뒤, 글자나 말로 이름을 고치세요.",
     btn_edit_label: "수정",
     btn_edit_label_voice: "말로 수정",
     btn_remove_one: "빼기",
@@ -304,7 +302,7 @@ const I18N = {
     btn_cancel_label: "취소",
     vision_badge_ok: "확신",
     vision_badge_low: "확인",
-    btn_add_box: "박스 추가",
+    btn_add_box: "스팟 추가",
     btn_delete_box: "삭제",
     live_camera_summary: "라이브 카메라 (실험)",
     btn_start_camera: "카메라 시작",
@@ -744,8 +742,6 @@ function clearVisionObjectPreview() {
   visionSelectedObjectId = "";
   visionRelabelTargetId = "";
   visionEditMode = "select";
-  visionPointerState = null;
-  visionTempBbox = null;
 
   const panel = $("visionObjectPanel");
   if (panel) {
@@ -780,11 +776,14 @@ function setVisionObjectsPreview(imageDataUrl, objects) {
 function setVisionEditMode(nextMode) {
   const mode = String(nextMode || "").trim().toLowerCase();
   visionEditMode = mode === "add" ? "add" : "select";
-  visionTempBbox = null;
 
   const addBtn = $("visionAddBoxBtn");
   if (addBtn) {
     addBtn.classList.toggle("active", visionEditMode === "add");
+  }
+  const canvas = $("visionPreviewCanvas");
+  if (canvas) {
+    canvas.style.cursor = visionEditMode === "add" ? "crosshair" : "pointer";
   }
 }
 
@@ -856,16 +855,21 @@ function syncVisionObjectSelectionUI() {
   });
 }
 
-function findVisionObjectAt(nx, ny) {
+function findVisionObjectAt(nx, ny, rect = null) {
   const x = Number(nx);
   const y = Number(ny);
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     return null;
   }
 
-  // Prefer the smallest matching box (more specific).
+  const rw = Number(rect?.width || 0);
+  const rh = Number(rect?.height || 0);
+  const minSide = rw > 0 && rh > 0 ? Math.min(rw, rh) : 0;
+  // On mobile, use distance-to-center hit test so tiny spots are easy to tap.
+  const threshold = minSide > 0 ? clamp(28 / minSide, 0.04, 0.16) : 0.08;
+
   let best = null;
-  let bestArea = Infinity;
+  let bestScore = Infinity;
   for (const obj of visionObjectsCache || []) {
     const bbox = obj?.bbox;
     if (!bbox) {
@@ -878,15 +882,23 @@ function findVisionObjectAt(nx, ny) {
     if (![bx, by, bw, bh].every(Number.isFinite)) {
       continue;
     }
-    if (x < bx || y < by || x > bx + bw || y > by + bh) {
+
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
+    const dist = Math.hypot(x - cx, y - cy);
+    const inside = x >= bx && y >= by && x <= bx + bw && y <= by + bh;
+    if (!inside && dist > threshold) {
       continue;
     }
-    const area = bw * bh;
-    if (area < bestArea) {
-      bestArea = area;
+
+    const area = Math.max(0.000001, bw * bh);
+    const score = dist + (inside ? 0 : 0.2) + area * 0.1;
+    if (score < bestScore) {
+      bestScore = score;
       best = obj;
     }
   }
+
   return best;
 }
 
@@ -952,51 +964,37 @@ function drawVisionOverlay() {
     const y = by * rect.height;
     const w = bw * rect.width;
     const h = bh * rect.height;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
 
     const selected = obj?.id && String(obj.id) === visionSelectedObjectId;
     const confidence = String(obj?.confidence || "").toLowerCase();
     const baseColor = confidence === "low" ? "#b87014" : "#2f8f5b";
-    const stroke = selected ? "#182018" : baseColor;
-    ctx.strokeStyle = stroke;
+    const ring = selected ? "#182018" : baseColor;
+
+    // Draw spot marker instead of resize-heavy box UI.
+    const r = selected ? 8 : 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = baseColor;
+    ctx.fill();
     ctx.lineWidth = selected ? 3 : 2;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = selected ? "#ffffff" : "#fff";
+    ctx.stroke();
+
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = ring;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     const label = getVisionObjectDisplayLabel(obj);
     const text = `${i + 1} ${label}`.trim();
-    drawLabel(x, y, text, "#fff");
-
-    if (selected) {
-      // Corner handles for resizing.
-      const hs = 8;
-      ctx.fillStyle = "#fff";
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1;
-      const corners = [
-        [x, y],
-        [x + w, y],
-        [x, y + h],
-        [x + w, y + h]
-      ];
-      for (const [cx, cy] of corners) {
-        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
-        ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
-      }
-    }
+    drawLabel(Math.max(0, cx + 10), Math.max(18, cy - 8), text, "#fff");
   }
 
-  if (visionTempBbox) {
-    const bx = Number(visionTempBbox.x);
-    const by = Number(visionTempBbox.y);
-    const bw = Number(visionTempBbox.w);
-    const bh = Number(visionTempBbox.h);
-    if ([bx, by, bw, bh].every(Number.isFinite)) {
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.strokeRect(bx * rect.width, by * rect.height, bw * rect.width, bh * rect.height);
-      ctx.setLineDash([]);
-    }
-  }
 }
 
 async function replaceVisionObjectLabel(objectId, newLabel, options = {}) {
@@ -1334,78 +1332,21 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeBboxFromPoints(x1, y1, x2, y2) {
-  const ax = clamp(Math.min(x1, x2), 0, 1);
-  const ay = clamp(Math.min(y1, y2), 0, 1);
-  const bx = clamp(Math.max(x1, x2), 0, 1);
-  const by = clamp(Math.max(y1, y2), 0, 1);
-  const w = Math.max(0, bx - ax);
-  const h = Math.max(0, by - ay);
-  if (w < 0.01 || h < 0.01) {
-    return null;
-  }
-  return { x: ax, y: ay, w, h };
-}
+function buildSpotBboxAt(nx, ny, rect) {
+  const x = clamp(nx, 0, 1);
+  const y = clamp(ny, 0, 1);
+  const rw = Number(rect?.width || 0);
+  const rh = Number(rect?.height || 0);
+  const halfW = rw > 0 ? clamp(34 / rw, 0.035, 0.12) : 0.06;
+  const halfH = rh > 0 ? clamp(34 / rh, 0.035, 0.12) : 0.06;
 
-function getHandleAtPoint(obj, nx, ny, rect) {
-  if (!obj?.bbox || !rect?.width || !rect?.height) {
-    return null;
-  }
-  const bbox = obj.bbox;
-  const x = Number(bbox.x);
-  const y = Number(bbox.y);
-  const w = Number(bbox.w);
-  const h = Number(bbox.h);
-  if (![x, y, w, h].every(Number.isFinite)) {
-    return null;
-  }
-
-  const px = nx * rect.width;
-  const py = ny * rect.height;
-  const cx1 = x * rect.width;
-  const cy1 = y * rect.height;
-  const cx2 = (x + w) * rect.width;
-  const cy2 = (y + h) * rect.height;
-
-  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
-  const threshold = 14; // px
-
-  const corners = [
-    { handle: "nw", x: cx1, y: cy1 },
-    { handle: "ne", x: cx2, y: cy1 },
-    { handle: "sw", x: cx1, y: cy2 },
-    { handle: "se", x: cx2, y: cy2 }
-  ];
-  let best = null;
-  let bestD = Infinity;
-  for (const c of corners) {
-    const d = dist(px, py, c.x, c.y);
-    if (d <= threshold && d < bestD) {
-      bestD = d;
-      best = c.handle;
-    }
-  }
-  return best;
-}
-
-function updateObjectBbox(objId, bbox) {
-  const id = String(objId || "").trim();
-  if (!id || !bbox) {
-    return;
-  }
-  const idx = (visionObjectsCache || []).findIndex((o) => String(o?.id || "") === id);
-  if (idx < 0) {
-    return;
-  }
-  visionObjectsCache[idx] = {
-    ...visionObjectsCache[idx],
-    bbox: {
-      x: Math.round(Number(bbox.x) * 10000) / 10000,
-      y: Math.round(Number(bbox.y) * 10000) / 10000,
-      w: Math.round(Number(bbox.w) * 10000) / 10000,
-      h: Math.round(Number(bbox.h) * 10000) / 10000
-    }
-  };
+  const left = clamp(x - halfW, 0, 1);
+  const top = clamp(y - halfH, 0, 1);
+  const right = clamp(x + halfW, 0, 1);
+  const bottom = clamp(y + halfH, 0, 1);
+  const w = Math.max(0.02, right - left);
+  const h = Math.max(0.02, bottom - top);
+  return { x: left, y: top, w, h };
 }
 
 async function deleteVisionObject(objectId) {
@@ -4499,185 +4440,38 @@ function bindEvents() {
         return;
       }
 
-      const nx = (event.clientX - rect.left) / rect.width;
-      const ny = (event.clientY - rect.top) / rect.height;
-
-      if (visionEditMode === "add") {
-        visionPointerState = {
-          pointerId: event.pointerId,
-          action: "draw",
-          startNx: clamp(nx, 0, 1),
-          startNy: clamp(ny, 0, 1)
-        };
-        visionTempBbox = { x: visionPointerState.startNx, y: visionPointerState.startNy, w: 0, h: 0 };
-        try {
-          canvas.setPointerCapture(event.pointerId);
-        } catch {}
-        drawVisionOverlay();
-        event.preventDefault();
-        return;
-      }
-
-      const hit = findVisionObjectAt(nx, ny);
-      if (hit?.id) {
-        selectVisionObject(hit.id);
-      }
-
-      const selected = getSelectedVisionObject();
-      const handle = getHandleAtPoint(selected, nx, ny, rect);
-      if (selected && handle) {
-        visionPointerState = {
-          pointerId: event.pointerId,
-          action: "resize",
-          handle,
-          objectId: selected.id,
-          startNx: clamp(nx, 0, 1),
-          startNy: clamp(ny, 0, 1),
-          startBbox: { ...selected.bbox }
-        };
-        try {
-          canvas.setPointerCapture(event.pointerId);
-        } catch {}
-        event.preventDefault();
-        return;
-      }
-
-      if (selected?.bbox) {
-        const bb = selected.bbox;
-        const x = Number(bb.x);
-        const y = Number(bb.y);
-        const w = Number(bb.w);
-        const h = Number(bb.h);
-        if ([x, y, w, h].every(Number.isFinite) && nx >= x && ny >= y && nx <= x + w && ny <= y + h) {
-          visionPointerState = {
-            pointerId: event.pointerId,
-            action: "move",
-            objectId: selected.id,
-            startNx: clamp(nx, 0, 1),
-            startNy: clamp(ny, 0, 1),
-            startBbox: { ...selected.bbox }
-          };
-          try {
-            canvas.setPointerCapture(event.pointerId);
-          } catch {}
-          event.preventDefault();
-        }
-      }
-    };
-
-    const onMove = (event) => {
-      const img = $("visionPreviewImage");
-      if (!img || !visionPointerState) {
-        return;
-      }
-      if (event.pointerId !== visionPointerState.pointerId) {
-        return;
-      }
-      const rect = img.getBoundingClientRect();
-      if (!rect.width || !rect.height) {
-        return;
-      }
       const nx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
       const ny = clamp((event.clientY - rect.top) / rect.height, 0, 1);
 
-      if (visionPointerState.action === "draw") {
-        const bb = normalizeBboxFromPoints(visionPointerState.startNx, visionPointerState.startNy, nx, ny);
-        visionTempBbox = bb || null;
-        drawVisionOverlay();
-        event.preventDefault();
-        return;
-      }
-
-      if (visionPointerState.action === "move") {
-        const start = visionPointerState.startBbox;
-        const dx = nx - visionPointerState.startNx;
-        const dy = ny - visionPointerState.startNy;
-        const x = clamp(Number(start.x) + dx, 0, 1 - Number(start.w));
-        const y = clamp(Number(start.y) + dy, 0, 1 - Number(start.h));
-        updateObjectBbox(visionPointerState.objectId, { x, y, w: start.w, h: start.h });
-        drawVisionOverlay();
-        event.preventDefault();
-        return;
-      }
-
-      if (visionPointerState.action === "resize") {
-        const start = visionPointerState.startBbox;
-        const x1 = Number(start.x);
-        const y1 = Number(start.y);
-        const x2 = x1 + Number(start.w);
-        const y2 = y1 + Number(start.h);
-
-        let ax = x1;
-        let ay = y1;
-        let bx = x2;
-        let by = y2;
-
-        switch (visionPointerState.handle) {
-          case "nw":
-            ax = nx;
-            ay = ny;
-            break;
-          case "ne":
-            bx = nx;
-            ay = ny;
-            break;
-          case "sw":
-            ax = nx;
-            by = ny;
-            break;
-          case "se":
-            bx = nx;
-            by = ny;
-            break;
-        }
-
-        const bb = normalizeBboxFromPoints(ax, ay, bx, by);
-        if (bb) {
-          updateObjectBbox(visionPointerState.objectId, bb);
-          drawVisionOverlay();
-        }
-        event.preventDefault();
-      }
-    };
-
-    const onUp = (event) => {
-      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
-        return;
-      }
-      const action = visionPointerState.action;
-      visionPointerState = null;
-
-      if (action === "draw") {
-        const bb = visionTempBbox;
-        visionTempBbox = null;
+      if (visionEditMode === "add") {
+        const bb = buildSpotBboxAt(nx, ny, rect);
+        const obj = buildCustomVisionObject(bb);
+        visionObjectsCache = (visionObjectsCache || []).concat([obj]);
+        visionSelectedObjectId = obj.id;
         setVisionEditMode("select");
-        if (bb) {
-          const obj = buildCustomVisionObject(bb);
-          visionObjectsCache = (visionObjectsCache || []).concat([obj]);
-          visionSelectedObjectId = obj.id;
-          renderVisionObjectPreview({ skipImageReload: true });
-          openVisionObjectEdit(obj.id);
-        } else {
-          drawVisionOverlay();
-        }
-      }
-      event.preventDefault();
-    };
-
-    const onCancel = (event) => {
-      if (!visionPointerState || event.pointerId !== visionPointerState.pointerId) {
+        renderVisionObjectPreview({ skipImageReload: true });
+        openVisionObjectEdit(obj.id);
+        event.preventDefault();
         return;
       }
-      visionPointerState = null;
-      visionTempBbox = null;
-      setVisionEditMode("select");
+
+      const hit = findVisionObjectAt(nx, ny, rect);
+      if (hit?.id) {
+        const id = String(hit.id);
+        const wasSelected = id === visionSelectedObjectId;
+        selectVisionObject(id);
+        if (wasSelected) {
+          openVisionObjectEdit(id);
+        }
+        event.preventDefault();
+        return;
+      }
+      visionSelectedObjectId = "";
+      syncVisionObjectSelectionUI();
       drawVisionOverlay();
     };
 
     canvas.addEventListener("pointerdown", onDown);
-    canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("pointerup", onUp);
-    canvas.addEventListener("pointercancel", onCancel);
   }
   if ($("visionAddBoxBtn")) {
     $("visionAddBoxBtn").addEventListener("click", (event) => {
