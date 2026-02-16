@@ -1,8 +1,20 @@
 import { jsonResponse, errorResponse, withOptionsCors, readJsonOptional } from "../../../_lib/http.js";
 import { buildAliasLookup } from "../../../_lib/catalog.js";
 import { ensureCatalogLocalizationForCommands } from "../../../_lib/ingredient_localization.js";
-import { consumeInventoryByIngredientKey, upsertInventoryItemRecordByIngredientKey } from "../../../_lib/inventory.js";
-import { clampNumber, normalizeIngredientKey, normalizeWhitespace, normalizeWord, safeString, todayEpochDay, epochDayToIso } from "../../../_lib/util.js";
+import {
+  consumeInventoryByIngredientKey,
+  updateInventoryByIngredientKey,
+  upsertInventoryItemRecordByIngredientKey
+} from "../../../_lib/inventory.js";
+import {
+  clampNumber,
+  epochDayToIso,
+  normalizeIngredientKey,
+  normalizeWhitespace,
+  normalizeWord,
+  safeString,
+  todayEpochDay
+} from "../../../_lib/util.js";
 
 function resolveAgentConfig(env) {
   const enabledRaw = safeString(env?.OPENAI_ENABLE_INVENTORY_AGENT, "").toLowerCase();
@@ -19,10 +31,7 @@ function resolveAgentConfig(env) {
 
 function coerceUnit(value) {
   const raw = String(value || "").trim().toLowerCase();
-  if (!raw) {
-    return "ea";
-  }
-  if (raw.length > 12) {
+  if (!raw || raw.length > 12) {
     return "ea";
   }
   return raw;
@@ -44,7 +53,6 @@ function normalizeName(value) {
   if (!raw) {
     return "";
   }
-  // Keep Korean/English as-is; just trim stray punctuation/spaces.
   return raw.replace(/[^\p{L}\p{N}\s_]+/gu, " ").replace(/\s+/g, " ").trim();
 }
 
@@ -63,7 +71,113 @@ function normalizeAction(value) {
   if (raw === "consume" || raw === "remove" || raw === "eat" || raw === "use" || raw === "discard" || raw === "delete") {
     return "consume";
   }
+  if (
+    raw === "set_quantity" ||
+    raw === "update_quantity" ||
+    raw === "change_quantity" ||
+    raw === "quantity" ||
+    raw === "update_qty"
+  ) {
+    return "set_quantity";
+  }
+  if (
+    raw === "set_expiration" ||
+    raw === "update_expiration" ||
+    raw === "change_expiration" ||
+    raw === "expiration" ||
+    raw === "set_expiry"
+  ) {
+    return "set_expiration";
+  }
+  if (raw.includes("수량")) {
+    return "set_quantity";
+  }
+  if (raw.includes("유통기한") || raw.includes("소비기한")) {
+    return "set_expiration";
+  }
   return raw;
+}
+
+function toIsoDateParts(year, month, day) {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    return "";
+  }
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) {
+    return "";
+  }
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function addDaysIso(baseDateUtc, days) {
+  const dt = new Date(baseDateUtc.getTime());
+  dt.setUTCDate(dt.getUTCDate() + Number(days || 0));
+  return `${String(dt.getUTCFullYear()).padStart(4, "0")}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    dt.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+function normalizeExpirationDateInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  let m = raw.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+  if (m) {
+    return toIsoDateParts(m[1], m[2], m[3]);
+  }
+
+  const now = new Date();
+  const todayBase = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  if (/^오늘$/.test(raw)) {
+    return addDaysIso(todayBase, 0);
+  }
+  if (/^내일$/.test(raw)) {
+    return addDaysIso(todayBase, 1);
+  }
+  if (/^모레$/.test(raw)) {
+    return addDaysIso(todayBase, 2);
+  }
+
+  m = raw.match(/^(\d{1,2})\s*일\s*후$/);
+  if (m) {
+    return addDaysIso(todayBase, Number(m[1]));
+  }
+
+  m = raw.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일?$/);
+  if (m) {
+    const month = Number(m[1]);
+    const day = Number(m[2]);
+    let year = now.getUTCFullYear();
+    let iso = toIsoDateParts(year, month, day);
+    if (!iso) {
+      return "";
+    }
+    if (iso < addDaysIso(todayBase, -1)) {
+      year += 1;
+      iso = toIsoDateParts(year, month, day);
+    }
+    return iso;
+  }
+
+  if (/다음\s*달/.test(raw)) {
+    const dayMatch = raw.match(/(\d{1,2})\s*일/);
+    if (!dayMatch) {
+      return "";
+    }
+    const day = Number(dayMatch[1]);
+    const nextMonth = now.getUTCMonth() + 2;
+    const year = nextMonth > 12 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+    const month = ((nextMonth - 1) % 12) + 1;
+    return toIsoDateParts(year, month, day);
+  }
+
+  return "";
 }
 
 async function extractInventoryCommandsWithOpenAI(context, text, uiLang, cfg) {
@@ -72,23 +186,32 @@ async function extractInventoryCommandsWithOpenAI(context, text, uiLang, cfg) {
   }
 
   const prompt = [
-    "You convert a user's message into inventory update commands for a fridge/pantry app.",
+    "Convert user speech to inventory commands for a fridge/pantry app.",
     "",
-    "The user may say what they PUT INTO storage, or what they TOOK OUT / ATE / USED UP.",
+    "The user may:",
+    "- add items",
+    "- consume/remove items",
+    "- set quantity for an existing item",
+    "- set expiration date for an existing item",
+    "",
     "Extract ONLY food items (ingredients, packaged foods, prepared dishes).",
     "",
-    "Output JSON ONLY:",
-    "{\"commands\":[{\"action\":\"add|consume\",\"name\":\"...\",\"quantity\":1,\"unit\":\"ea\",\"remove_all\":false}]}",
+    "Return JSON ONLY:",
+    "{\"commands\":[{\"action\":\"add|consume|set_quantity|set_expiration\",\"name\":\"...\",\"quantity\":1,\"unit\":\"ea\",\"remove_all\":false,\"expiration_date\":\"YYYY-MM-DD\"}]}",
     "",
     "Rules:",
-    "- Ignore spatial/order words (left/right/top/bottom/next/first/slot/shelf/box) and filler phrases.",
-    "- Ignore wake words (e.g. app name + '야').",
-    "- Keep item names in the original language. Do not translate.",
-    "- Normalize names to the food itself (remove particles/endings like '을/를/이/가/랑/하고').",
-    "- Deduplicate items.",
-    "- If user clearly indicates 'all' (e.g. 'all of it', 'ran out', '다 먹었어', '없어', '버렸어'), set remove_all=true and quantity=null.",
-    "- If quantity is explicitly mentioned, include it; otherwise quantity=1 and unit=\"ea\".",
+    "- Ignore spatial/order words and filler phrases.",
+    "- Ignore wake words and politeness words.",
+    "- Keep item names in original language.",
+    "- Normalize name to food itself.",
+    "- Deduplicate commands.",
+    "- For set_expiration, return expiration_date in ISO YYYY-MM-DD when possible.",
+    "- For set_quantity, include quantity.",
+    "- For consume all intent, set remove_all=true and quantity=null.",
     "",
+    "Examples:",
+    "- \"계란 3개 남았어\" -> {\"action\":\"set_quantity\",\"name\":\"계란\",\"quantity\":3}",
+    "- \"닭갈비 유통기한은 다음 달 20일\" -> {\"action\":\"set_expiration\",\"name\":\"닭갈비\",\"expiration_date\":\"YYYY-MM-DD\"}",
     `- Return at most ${cfg.maxItems} commands.`
   ].join("\n");
 
@@ -173,18 +296,33 @@ export async function onRequest(context) {
 
     for (const cmd of rawCommands) {
       const action = normalizeAction(cmd?.action);
-      if (action !== "add" && action !== "consume") {
+      if (action !== "add" && action !== "consume" && action !== "set_quantity" && action !== "set_expiration") {
         continue;
       }
+
       const name = normalizeName(cmd?.name);
       if (!name || name.length < 2) {
         continue;
       }
-      const removeAll = cmd?.remove_all === true;
-      const quantity = removeAll ? null : coerceQuantity(cmd?.quantity);
-      const unit = coerceUnit(cmd?.unit);
 
-      const dedupKey = `${action}:${normalizeWord(name)}`;
+      const removeAll = cmd?.remove_all === true;
+      const rawQuantity = cmd?.quantity;
+      const hasExplicitQuantity =
+        rawQuantity !== null &&
+        rawQuantity !== undefined &&
+        String(rawQuantity).trim().length > 0 &&
+        Number.isFinite(Number(rawQuantity));
+      const quantity = removeAll ? null : coerceQuantity(rawQuantity);
+      const unit = coerceUnit(cmd?.unit);
+      const expirationDate = action === "set_expiration" ? normalizeExpirationDateInput(cmd?.expiration_date || cmd?.date) : "";
+      if (action === "set_quantity" && !hasExplicitQuantity) {
+        continue;
+      }
+      if (action === "set_expiration" && !expirationDate) {
+        continue;
+      }
+
+      const dedupKey = `${action}:${normalizeWord(name)}:${expirationDate || ""}:${quantity ?? ""}`;
       if (dedup.has(dedupKey)) {
         continue;
       }
@@ -192,8 +330,6 @@ export async function onRequest(context) {
 
       const mention = aliasLookup.get(normalizeWord(name)) || null;
       const ingredientKey = mention?.ingredient_key ? String(mention.ingredient_key) : normalizeIngredientKey(name);
-
-      // Prefer storing the user's spoken Korean name when available.
       const ingredientName = uiLang === "ko" && hasHangul(name) ? name : String(mention?.ingredient_name || name);
 
       normalizedCommands.push({
@@ -203,16 +339,16 @@ export async function onRequest(context) {
         ingredient_name: ingredientName,
         quantity,
         unit,
+        expiration_date: expirationDate || null,
         remove_all: Boolean(removeAll),
         match_type: mention ? "alias" : "fallback"
       });
     }
 
     if (normalizedCommands.length === 0) {
-      return jsonResponse(context, { data: { commands: [], added: [], consumed: [], not_found: [] } }, 200);
+      return jsonResponse(context, { data: { commands: [], added: [], consumed: [], updated: [], not_found: [] } }, 200);
     }
 
-    // Best-effort: keep Korean UI labels natural (adds aliases/translations into the catalog).
     let localization = null;
     try {
       const locCommands = normalizedCommands.map((c) => ({
@@ -226,6 +362,7 @@ export async function onRequest(context) {
 
     const added = [];
     const consumed = [];
+    const updated = [];
     const notFound = [];
 
     for (const c of normalizedCommands) {
@@ -270,6 +407,33 @@ export async function onRequest(context) {
             removed_item_ids: res.removed_item_ids || []
           });
         }
+        continue;
+      }
+
+      if (c.action === "set_quantity" || c.action === "set_expiration") {
+        const res = await updateInventoryByIngredientKey(context, userId, c.ingredient_key, {
+          storage_type: storageType,
+          quantity: c.action === "set_quantity" ? c.quantity ?? 1 : null,
+          expiration_date: c.action === "set_expiration" ? c.expiration_date || null : null
+        });
+        if (Number(res?.matched_count || 0) <= 0) {
+          notFound.push({
+            ingredient_key: c.ingredient_key,
+            ingredient_name: c.ingredient_name,
+            quantity: c.quantity ?? 1,
+            expiration_date: c.expiration_date || null,
+            unit: c.unit || "ea"
+          });
+        } else {
+          updated.push({
+            ingredient_key: c.ingredient_key,
+            ingredient_name: c.ingredient_name,
+            action: c.action,
+            quantity: c.action === "set_quantity" ? c.quantity ?? 1 : null,
+            expiration_date: c.action === "set_expiration" ? c.expiration_date || null : null,
+            item: res.updated_item
+          });
+        }
       }
     }
 
@@ -278,6 +442,7 @@ export async function onRequest(context) {
         commands: normalizedCommands,
         added,
         consumed,
+        updated,
         not_found: notFound,
         localization
       }

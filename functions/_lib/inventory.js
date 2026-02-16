@@ -609,6 +609,150 @@ export async function consumeInventoryByIngredientKey(context, userId, ingredien
   };
 }
 
+export async function updateInventoryByIngredientKey(context, userId, ingredientKeyInput, params = {}) {
+  const uid = String(userId || "demo-user").trim() || "demo-user";
+  const ingredientKey = normalizeIngredientKey(String(ingredientKeyInput || "").trim());
+  if (!ingredientKey) {
+    throw new Error("ingredient_key is required.");
+  }
+
+  const preferredStorage = params?.storage_type ? String(params.storage_type).trim() : "";
+  const hasQuantityUpdate = params?.quantity !== null && params?.quantity !== undefined;
+  const hasExpirationUpdate =
+    params?.expiration_date !== null &&
+    params?.expiration_date !== undefined &&
+    String(params.expiration_date || "").trim().length > 0;
+
+  if (!hasQuantityUpdate && !hasExpirationUpdate) {
+    throw new Error("quantity or expiration_date is required.");
+  }
+
+  const nextQuantity = hasQuantityUpdate ? coercePositiveNumber(params?.quantity, 1.0) : null;
+  const nextExpirationDate = hasExpirationUpdate ? String(params.expiration_date).trim().slice(0, 10) : null;
+  if (nextExpirationDate && parseExpirationEpochDay(nextExpirationDate) === null) {
+    throw new Error("expiration_date must be a valid ISO date (YYYY-MM-DD).");
+  }
+
+  const invKey = inventoryKey(uid);
+  const items = await getArray(context.env, invKey);
+  const matches = [];
+  for (const item of items) {
+    if (!item) {
+      continue;
+    }
+    if (normalizeIngredientKey(item.ingredient_key || "") !== ingredientKey) {
+      continue;
+    }
+    matches.push(item);
+  }
+
+  if (matches.length === 0) {
+    return {
+      matched_count: 0,
+      ingredient_key: ingredientKey,
+      updated_item: null
+    };
+  }
+
+  let effectiveMatches = matches;
+  if (preferredStorage) {
+    const preferred = matches.filter((i) => String(i.storage_type || "") === preferredStorage);
+    if (preferred.length > 0) {
+      effectiveMatches = preferred;
+    }
+  }
+
+  const target = [...effectiveMatches].sort((a, b) => {
+    const ua = String(a?.updated_at || a?.created_at || "");
+    const ub = String(b?.updated_at || b?.created_at || "");
+    return String(ub).localeCompare(String(ua));
+  })[0];
+
+  if (!target?.id) {
+    return {
+      matched_count: 0,
+      ingredient_key: ingredientKey,
+      updated_item: null
+    };
+  }
+
+  const targetId = String(target.id);
+  const now = nowIso();
+  const beforeQuantity = Number(target.quantity || 0);
+
+  const updatedItems = [];
+  let updatedItem = null;
+  for (const row of items) {
+    const rowId = row?.id ? String(row.id) : "";
+    if (rowId !== targetId) {
+      updatedItems.push(row);
+      continue;
+    }
+
+    let next = {
+      ...row,
+      updated_at: now
+    };
+
+    if (hasQuantityUpdate) {
+      next.quantity = nextQuantity;
+    }
+
+    if (hasExpirationUpdate && nextExpirationDate) {
+      next.suggested_expiration_date = nextExpirationDate;
+      next.range_min_date = nextExpirationDate;
+      next.range_max_date = nextExpirationDate;
+      next.expiration_source = "manual_voice_update";
+      next.confidence = 1.0;
+    }
+
+    next = normalizeInventoryStatus(next, todayEpochDay());
+    updatedItem = next;
+    updatedItems.push(next);
+  }
+
+  await putArray(context.env, invKey, updatedItems);
+
+  // Replace notifications for the updated item so reminders match the new expiration.
+  const nKey = notificationsKey(uid);
+  const notifications = await getArray(context.env, nKey);
+  const baseNotifications = (notifications || []).filter((n) => n && String(n.inventory_item_id) !== targetId);
+  if (updatedItem?.suggested_expiration_date) {
+    baseNotifications.push(...newExpirationNotifications(uid, targetId, updatedItem.suggested_expiration_date));
+  }
+  await putArray(context.env, nKey, baseNotifications);
+
+  if (hasQuantityUpdate) {
+    const delta = Math.round((Number(nextQuantity || 0) - Number(beforeQuantity || 0)) * 100) / 100;
+    if (delta !== 0) {
+      const usageEvent =
+        delta > 0
+          ? {
+              ts: now,
+              action: "add",
+              ingredient_key: ingredientKey,
+              quantity: Math.round(delta * 100) / 100,
+              source: "inventory.voice_update_quantity"
+            }
+          : {
+              ts: now,
+              action: "consume",
+              ingredient_key: ingredientKey,
+              quantity: Math.round(Math.abs(delta) * 100) / 100,
+              source: "inventory.voice_update_quantity"
+            };
+
+      await logUsageEventsBestEffort(context, uid, usageEvent);
+    }
+  }
+
+  return {
+    matched_count: effectiveMatches.length,
+    ingredient_key: ingredientKey,
+    updated_item: updatedItem
+  };
+}
+
 export async function recomputeInventoryStatuses(context, userId) {
   const invKey = inventoryKey(userId);
   const items = await getArray(context.env, invKey);

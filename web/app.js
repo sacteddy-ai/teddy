@@ -14,6 +14,7 @@ let realtimeLastSharedImageAt = 0;
 let realtimeIngestChain = Promise.resolve();
 let realtimeLastIngestedText = "";
 let realtimeLastIngestedAt = 0;
+let realtimeRecentSpeechTexts = [];
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
@@ -1597,6 +1598,7 @@ async function sendCaptureMessagePayload(payload) {
 function formatInventoryIngestSummary(data) {
   const added = Array.isArray(data?.added) ? data.added : [];
   const consumed = Array.isArray(data?.consumed) ? data.consumed : [];
+  const updated = Array.isArray(data?.updated) ? data.updated : [];
   const notFound = Array.isArray(data?.not_found) ? data.not_found : [];
 
   const labelFor = (key, fallback) => ingredientLabel(String(key || ""), String(fallback || ""));
@@ -1624,6 +1626,28 @@ function formatInventoryIngestSummary(data) {
     })
     .filter((v) => v);
 
+  const updatedText = updated
+    .map((row) => {
+      const label = labelFor(row?.ingredient_key, row?.ingredient_name);
+      if (!label) {
+        return "";
+      }
+      const action = String(row?.action || "").trim().toLowerCase();
+      if (action === "set_quantity") {
+        const q = Number(row?.quantity ?? row?.item?.quantity ?? 0);
+        if (!Number.isFinite(q) || q <= 0) {
+          return label;
+        }
+        return `${label}=${q}`;
+      }
+      if (action === "set_expiration") {
+        const exp = String(row?.expiration_date || row?.item?.suggested_expiration_date || "").trim();
+        return exp ? `${label}(${exp})` : label;
+      }
+      return label;
+    })
+    .filter((v) => v);
+
   const notFoundText = notFound
     .map((row) => {
       const label = labelFor(row?.ingredient_key, row?.ingredient_name);
@@ -1637,6 +1661,9 @@ function formatInventoryIngestSummary(data) {
   }
   if (consumedText.length > 0) {
     parts.push(`${currentLang === "ko" ? "소비" : "Consumed"}: ${consumedText.join(", ")}`);
+  }
+  if (updatedText.length > 0) {
+    parts.push(`${currentLang === "ko" ? "수정" : "Updated"}: ${updatedText.join(", ")}`);
   }
   if (notFoundText.length > 0) {
     parts.push(`${currentLang === "ko" ? "없음" : "Not found"}: ${notFoundText.join(", ")}`);
@@ -2856,6 +2883,7 @@ function stopRealtimeVoice() {
   realtimeIngestChain = Promise.resolve();
   realtimeLastIngestedText = "";
   realtimeLastIngestedAt = 0;
+  realtimeRecentSpeechTexts = [];
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -2907,6 +2935,8 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   }
   realtimeLastIngestedText = text;
   realtimeLastIngestedAt = now;
+  const recentContext = Array.isArray(realtimeRecentSpeechTexts) ? realtimeRecentSpeechTexts.slice(-2) : [];
+  realtimeRecentSpeechTexts = [...recentContext, text].slice(-4);
 
   if (draftVoiceEditTarget) {
     const target = draftVoiceEditTarget;
@@ -2977,8 +3007,36 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     realtimeIngestChain = realtimeIngestChain
       .then(() => ingestInventoryFromText(text, sourceType))
       .then(async (res) => {
-        const data = res?.data || null;
-        const summary = data ? formatInventoryIngestSummary(data) : "";
+        let data = res?.data || null;
+        let summary = data ? formatInventoryIngestSummary(data) : "";
+
+        // Multi-turn repair: if this turn has no parsed food action, retry with previous speech context.
+        if (!summary && recentContext.length > 0) {
+          const candidates = [];
+          const prev1 = String(recentContext[recentContext.length - 1] || "").trim();
+          const prev2 = String(recentContext[recentContext.length - 2] || "").trim();
+          if (prev1) {
+            candidates.push(`${prev1} ${text}`.trim());
+          }
+          if (prev2 && prev1) {
+            candidates.push(`${prev2} ${prev1} ${text}`.trim());
+          }
+
+          for (const candidate of candidates) {
+            if (!candidate || candidate === text) {
+              continue;
+            }
+            const retry = await ingestInventoryFromText(candidate, `${sourceType}_context`);
+            const retryData = retry?.data || null;
+            const retrySummary = retryData ? formatInventoryIngestSummary(retryData) : "";
+            if (retrySummary) {
+              data = retryData;
+              summary = retrySummary;
+              break;
+            }
+          }
+        }
+
         if (!summary) {
           appendRealtimeLogLine("system", t("voice_inventory_no_items"));
           setRealtimeStatus(t("voice_inventory_no_items"));
