@@ -119,6 +119,14 @@ This repo also includes a Cloudflare Pages Functions backend under `functions/`,
 
 Static data used by the Cloudflare backend is served from `web/data/*.json`.
 
+Recipe recommendation sources:
+
+- Base recipe catalog: `web/data/recipes.json`
+- Optional YouTube-derived catalog: `web/data/recipes_youtube.json`
+  - The backend merges both files when building recommendations.
+  - You can paste recipes extracted from YouTube description ingredient lists into `recipes_youtube.json` (schema example is included in that file).
+  - Set `source.type = "youtube"` and `source.url` to preserve reference metadata in recommendation responses.
+
 Vision API environment variables:
 
 ```powershell
@@ -164,6 +172,7 @@ $env:SAM3_SEGMENT_API_KEY = "sam3-key"
 - `POST /api/v1/ocr/parse-date`
 - `POST /api/v1/inventory/items`
 - `GET /api/v1/inventory/items`
+- `POST /api/v1/inventory/ingest`
 - `POST /api/v1/inventory/items/{item_id}/consume`
 - `GET /api/v1/inventory/summary`
 - `GET /api/v1/notifications`
@@ -226,14 +235,14 @@ Get recipe recommendations:
 
 ```powershell
 Invoke-RestMethod -Method Get `
-  -Uri "http://localhost:8080/api/v1/recommendations/recipes?user_id=demo-user&top_n=5"
+  -Uri "http://localhost:8080/api/v1/recommendations/recipes?user_id=demo-user&top_n=5&ui_lang=ko"
 ```
 
 Get shopping suggestions:
 
 ```powershell
 Invoke-RestMethod -Method Get `
-  -Uri "http://localhost:8080/api/v1/shopping/suggestions?user_id=demo-user&top_n=5&top_recipe_count=3"
+  -Uri "http://localhost:8080/api/v1/shopping/suggestions?user_id=demo-user&top_n=5&top_recipe_count=3&ui_lang=ko"
 ```
 
 Consume inventory item:

@@ -3648,6 +3648,19 @@ function renderRecipeList(items) {
           match: `${(r.match_ratio * 100).toFixed(0)}`
         })}</span>
         <span class="meta">${tf("meta_recipe_missing", { missing: missing || t("word_none") })}</span>
+        ${
+          r?.source_type
+            ? `<span class="meta">${currentLang === "ko" ? "\uCD9C\uCC98" : "source"}: ${
+                [
+                  r.source_channel || "",
+                  r.source_title || "",
+                  r.source_type === "youtube" && r.source_url ? r.source_url : ""
+                ]
+                  .filter((v) => String(v || "").trim())
+                  .join(" | ") || r.source_type
+              }</span>`
+            : ""
+        }
       </div>
       <div class="item-side"></div>
     `;
@@ -3659,7 +3672,7 @@ function renderRecipeList(items) {
 async function loadRecipes() {
   await loadIngredientLabels();
   const userId = getUserId();
-  const q = encodeQuery({ user_id: userId, top_n: 8 });
+  const q = encodeQuery({ user_id: userId, top_n: 8, ui_lang: currentLang });
   const result = await request(`/api/v1/recommendations/recipes?${q}`, { method: "GET" });
   renderRecipeList(result.data.items || []);
 }
@@ -3676,10 +3689,16 @@ function renderShopping(items) {
     const node = document.createElement("div");
     node.className = "item";
     const label = ingredientLabel(s.ingredient_key, s.ingredient_key);
-    const reasons = Array.isArray(s.reasons) ? s.reasons.join(", ") : "";
+    const reasons = Array.isArray(s.reason_labels) && s.reason_labels.length > 0
+      ? s.reason_labels.join(", ")
+      : Array.isArray(s.reasons)
+        ? s.reasons.join(", ")
+        : "";
     const related =
-      Array.isArray(s.related_recipe_ids) && s.related_recipe_ids.length > 0
-        ? s.related_recipe_ids.join(", ")
+      Array.isArray(s.related_recipe_names) && s.related_recipe_names.length > 0
+        ? s.related_recipe_names.join(", ")
+        : Array.isArray(s.related_recipe_ids) && s.related_recipe_ids.length > 0
+          ? s.related_recipe_ids.join(", ")
         : t("word_none");
     node.innerHTML = `
       <div class="item-main">
@@ -3698,7 +3717,7 @@ function renderShopping(items) {
 async function loadShopping() {
   await loadIngredientLabels();
   const userId = getUserId();
-  const q = encodeQuery({ user_id: userId, top_n: 8, top_recipe_count: 3 });
+  const q = encodeQuery({ user_id: userId, top_n: 8, top_recipe_count: 3, ui_lang: currentLang });
   const result = await request(`/api/v1/shopping/suggestions?${q}`, { method: "GET" });
   renderShopping(result.data.items || []);
 }

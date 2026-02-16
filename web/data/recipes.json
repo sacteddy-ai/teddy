@@ -1,85 +1,105 @@
 {
-  "version": "2026-02-13",
+  "version": "2026-02-16",
   "recipes": [
     {
       "id": "r001",
       "name": "Kimchi Fried Rice",
+      "name_ko": "\uAE40\uCE58\uBCF6\uC74C\uBC25",
       "chef": "Chef Min Signature",
       "ingredient_keys": ["kimchi", "egg", "green_onion"],
       "optional_ingredient_keys": ["pork", "onion"],
-      "tags": ["korean", "quick", "pan"]
+      "tags": ["korean", "quick", "pan"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r002",
       "name": "Soft Tofu Stew",
+      "name_ko": "\uC21C\uB450\uBD80\uCC0C\uAC1C",
       "chef": "Chef Han Home Style",
       "ingredient_keys": ["tofu", "egg", "green_onion"],
       "optional_ingredient_keys": ["pork", "kimchi", "onion"],
-      "tags": ["korean", "stew", "comfort"]
+      "tags": ["korean", "stew", "comfort"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r003",
       "name": "Egg Roll Omelette",
+      "name_ko": "\uACC4\uB780\uB9D0\uC774",
       "chef": "Chef Park Brunch",
       "ingredient_keys": ["egg", "green_onion", "onion"],
       "optional_ingredient_keys": ["milk"],
-      "tags": ["breakfast", "quick", "pan"]
+      "tags": ["breakfast", "quick", "pan"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r004",
       "name": "Chicken Stir Fry",
+      "name_ko": "\uB2ED\uACE0\uAE30 \uBCF6\uC74C",
       "chef": "Chef Lee Wok",
       "ingredient_keys": ["chicken", "onion", "green_onion"],
       "optional_ingredient_keys": ["potato"],
-      "tags": ["stir-fry", "dinner", "protein"]
+      "tags": ["stir-fry", "dinner", "protein"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r005",
       "name": "Beef Potato Soup",
+      "name_ko": "\uC18C\uACE0\uAE30 \uAC10\uC790\uAD6D",
       "chef": "Chef Jang Classic",
       "ingredient_keys": ["beef", "potato", "onion"],
       "optional_ingredient_keys": ["green_onion"],
-      "tags": ["soup", "dinner", "warm"]
+      "tags": ["soup", "dinner", "warm"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r006",
       "name": "Tofu Kimchi Bowl",
+      "name_ko": "\uB450\uBD80 \uAE40\uCE58 \uB36E\uBC25",
       "chef": "Chef Yoon Studio",
       "ingredient_keys": ["tofu", "kimchi"],
       "optional_ingredient_keys": ["egg", "green_onion"],
-      "tags": ["bowl", "quick", "korean"]
+      "tags": ["bowl", "quick", "korean"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r007",
       "name": "Pork Onion Rice Bowl",
+      "name_ko": "\uB3FC\uC9C0\uACE0\uAE30 \uC591\uD30C \uB36E\uBC25",
       "chef": "Chef Song Street",
       "ingredient_keys": ["pork", "onion"],
       "optional_ingredient_keys": ["egg", "green_onion"],
-      "tags": ["rice-bowl", "dinner", "protein"]
+      "tags": ["rice-bowl", "dinner", "protein"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r008",
       "name": "Creamy Milk Omelette",
+      "name_ko": "\uC6B0\uC720 \uC624\uBB08\uB81B",
       "chef": "Chef Choi Brunch",
       "ingredient_keys": ["egg", "milk"],
       "optional_ingredient_keys": ["onion", "green_onion"],
-      "tags": ["breakfast", "brunch", "quick"]
+      "tags": ["breakfast", "brunch", "quick"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r009",
       "name": "Apple Potato Salad",
+      "name_ko": "\uC0AC\uACFC \uAC10\uC790 \uC0D0\uB7EC\uB4DC",
       "chef": "Chef Kim Deli",
       "ingredient_keys": ["apple", "potato", "egg"],
       "optional_ingredient_keys": ["onion"],
-      "tags": ["salad", "side", "cold"]
+      "tags": ["salad", "side", "cold"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     },
     {
       "id": "r010",
       "name": "Simple Kimchi Soup",
+      "name_ko": "\uAC04\uB2E8 \uAE40\uCE58\uAD6D",
       "chef": "Chef Min Signature",
       "ingredient_keys": ["kimchi", "onion", "green_onion"],
       "optional_ingredient_keys": ["tofu", "pork"],
-      "tags": ["soup", "korean", "quick"]
+      "tags": ["soup", "korean", "quick"],
+      "source": { "type": "seed", "title": "Teddy starter recipe" }
     }
   ]
 }

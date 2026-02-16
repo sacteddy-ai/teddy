@@ -4,17 +4,73 @@ import { normalizeIngredientKey, clampNumber } from "./util.js";
 let recipeCache = null;
 let baselineCache = null;
 
+function normalizeLang(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "ko" || raw === "en") {
+    return raw;
+  }
+  return "en";
+}
+
+function pickLocalizedString(row, baseKey, lang, fallback = "") {
+  const normalizedLang = normalizeLang(lang);
+  const localizedKey = `${String(baseKey)}_${normalizedLang}`;
+  const localized = row?.[localizedKey];
+  if (localized !== null && localized !== undefined) {
+    const v = String(localized).trim();
+    if (v) {
+      return v;
+    }
+  }
+
+  const base = row?.[baseKey];
+  if (base !== null && base !== undefined) {
+    const v = String(base).trim();
+    if (v) {
+      return v;
+    }
+  }
+
+  return String(fallback || "").trim();
+}
+
+function pickLocalizedArray(row, baseKey, lang) {
+  const normalizedLang = normalizeLang(lang);
+  const localizedKey = `${String(baseKey)}_${normalizedLang}`;
+  const localized = row?.[localizedKey];
+  if (Array.isArray(localized)) {
+    return localized.map((x) => String(x)).filter((x) => x.trim().length > 0);
+  }
+
+  const base = row?.[baseKey];
+  if (Array.isArray(base)) {
+    return base.map((x) => String(x)).filter((x) => x.trim().length > 0);
+  }
+
+  return [];
+}
+
 async function getRecipeCatalog(context) {
   if (recipeCache) {
     return recipeCache;
   }
-  const parsed = await loadStaticJson(context, "/data/recipes.json");
-  const recipes = Array.isArray(parsed?.recipes) ? parsed.recipes : [];
-  if (recipes.length === 0) {
+  const parsedBase = await loadStaticJson(context, "/data/recipes.json");
+  const baseRecipes = Array.isArray(parsedBase?.recipes) ? parsedBase.recipes : [];
+
+  let youtubeRecipes = [];
+  try {
+    const parsedYoutube = await loadStaticJson(context, "/data/recipes_youtube.json");
+    youtubeRecipes = Array.isArray(parsedYoutube?.recipes) ? parsedYoutube.recipes : [];
+  } catch {
+    youtubeRecipes = [];
+  }
+
+  const merged = [...baseRecipes, ...youtubeRecipes];
+  if (merged.length === 0) {
     throw new Error("No recipes found.");
   }
-  recipeCache = recipes;
-  return recipes;
+  recipeCache = merged;
+  return merged;
 }
 
 async function getShoppingBaseline(context) {
@@ -72,6 +128,13 @@ function buildInventoryMap(inventoryItems) {
 }
 
 export async function getRecipeRecommendations(context, inventoryItems, topN = 10) {
+  let options = {};
+  if (typeof topN === "object" && topN !== null) {
+    options = topN;
+    topN = Number(options.top_n ?? 10);
+  }
+
+  const uiLang = normalizeLang(options?.ui_lang || "en");
   const n = Math.max(1, Number(topN || 10));
   const recipes = await getRecipeCatalog(context);
   const inventoryMap = buildInventoryMap(inventoryItems || []);
@@ -110,11 +173,17 @@ export async function getRecipeRecommendations(context, inventoryItems, topN = 1
     const completionBonus = canMakeNow ? 20 : 0;
     const score = Math.round((scoreBase + urgencyBoost + completionBonus - missingPenalty) * 100) / 100;
 
+    const source = recipe?.source && typeof recipe.source === "object" ? recipe.source : null;
+    const sourceType = source?.type ? String(source.type).trim() : "";
+    const sourceUrl = source?.url ? String(source.url).trim() : "";
+    const sourceTitle = pickLocalizedString(source || {}, "title", uiLang, source?.title || sourceType || "");
+    const sourceChannel = pickLocalizedString(source || {}, "channel", uiLang, source?.channel || "");
+
     results.push({
       recipe_id: String(recipe.id),
-      recipe_name: String(recipe.name || recipe.recipe_name || recipe.id),
-      chef: String(recipe.chef || "unknown"),
-      tags: Array.isArray(recipe.tags) ? recipe.tags : [],
+      recipe_name: pickLocalizedString(recipe, "name", uiLang, String(recipe.id)),
+      chef: pickLocalizedString(recipe, "chef", uiLang, "unknown"),
+      tags: pickLocalizedArray(recipe, "tags", uiLang),
       required_ingredient_keys: required,
       optional_ingredient_keys: Array.isArray(recipe.optional_ingredient_keys) ? recipe.optional_ingredient_keys : [],
       matched_ingredient_keys: matched,
@@ -122,7 +191,11 @@ export async function getRecipeRecommendations(context, inventoryItems, topN = 1
       can_make_now: canMakeNow,
       expiring_soon_used_count: expiringSoonUsedCount,
       match_ratio: matchRatio,
-      score
+      score,
+      source_type: sourceType || "seed",
+      source_url: sourceUrl || null,
+      source_title: sourceTitle || null,
+      source_channel: sourceChannel || null
     });
   }
 
@@ -220,10 +293,31 @@ export async function getShoppingSuggestions(context, inventoryItems, recipeReco
     return String(a.ingredient_key).localeCompare(String(b.ingredient_key));
   });
 
+  const recipeNameById = new Map();
+  for (const recipe of recipeRecommendations || []) {
+    const id = recipe?.recipe_id ? String(recipe.recipe_id) : "";
+    if (!id || recipeNameById.has(id)) {
+      continue;
+    }
+    const name = recipe?.recipe_name ? String(recipe.recipe_name) : id;
+    recipeNameById.set(id, name);
+  }
+
+  const itemsWithNames = items.map((entry) => {
+    const relatedRecipeIds = Array.isArray(entry.related_recipe_ids) ? entry.related_recipe_ids : [];
+    const relatedRecipeNames = relatedRecipeIds
+      .map((id) => recipeNameById.get(String(id)) || String(id))
+      .filter((v) => String(v || "").trim().length > 0);
+
+    return {
+      ...entry,
+      related_recipe_names: relatedRecipeNames
+    };
+  });
+
   return {
-    items,
-    count: items.length,
+    items: itemsWithNames,
+    count: itemsWithNames.length,
     low_stock_threshold: threshold
   };
 }
-

@@ -1,0 +1,22 @@
+{
+  "version": "2026-02-16",
+  "recipes": [],
+  "example": {
+    "id": "yt_my_channel_001",
+    "name": "My YouTube Recipe",
+    "name_ko": "\uB0B4 \uC720\uD29C\uBE0C \uB808\uC2DC\uD53C",
+    "chef": "My Channel",
+    "chef_ko": "\uB0B4 \uCC44\uB110",
+    "ingredient_keys": ["kimchi", "egg", "onion"],
+    "optional_ingredient_keys": ["green_onion"],
+    "tags": ["youtube", "home"],
+    "source": {
+      "type": "youtube",
+      "title": "Video title",
+      "title_ko": "\uC601\uC0C1 \uC81C\uBAA9",
+      "channel": "Channel name",
+      "channel_ko": "\uCC44\uB110 \uC774\uB984",
+      "url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID"
+    }
+  }
+}

@@ -15,18 +15,19 @@ export async function onRequest(context) {
     const url = new URL(context.request.url);
     const userId = (url.searchParams.get("user_id") || "demo-user").trim() || "demo-user";
     const topN = Number(url.searchParams.get("top_n") || 10);
+    const uiLang = (url.searchParams.get("ui_lang") || "en").trim().toLowerCase();
 
     const inventory = await recomputeInventoryStatuses(context, userId);
-    const recs = await getRecipeRecommendations(context, inventory, topN);
+    const recs = await getRecipeRecommendations(context, inventory, { top_n: topN, ui_lang: uiLang });
 
     return jsonResponse(context, {
       data: {
         items: recs,
-        count: recs.length
+        count: recs.length,
+        ui_lang: uiLang
       }
     });
   } catch (err) {
     return errorResponse(context, err?.message || String(err), 400);
   }
 }
-
