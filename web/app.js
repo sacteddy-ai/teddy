@@ -68,6 +68,8 @@ const I18N = {
     capture_storage_help: "Applies when finalizing to inventory.",
     word_none: "none",
     word_new_item: "New item",
+    word_source: "source",
+    word_link: "link",
     stat_total: "Total",
     stat_fresh: "Fresh",
     stat_expiring_soon: "Expiring Soon",
@@ -232,6 +234,8 @@ const I18N = {
     capture_storage_help: "인벤토리로 확정할 때 이 보관 방식으로 저장됩니다.",
     word_none: "없음",
     word_new_item: "새 항목",
+    word_source: "\uCD9C\uCC98",
+    word_link: "\uB9C1\uD06C",
     stat_total: "전체",
     stat_fresh: "신선",
     stat_expiring_soon: "임박",
@@ -3639,32 +3643,59 @@ function renderRecipeList(items) {
       .map((k) => ingredientLabel(k, k))
       .filter((v) => String(v || "").trim())
       .join(", ");
-    node.innerHTML = `
-      <div class="item-main">
-        <strong class="name">${r.recipe_name}</strong>
-        <span class="meta">${tf("meta_recipe_line", {
-          chef: r.chef,
-          score: r.score,
-          match: `${(r.match_ratio * 100).toFixed(0)}`
-        })}</span>
-        <span class="meta">${tf("meta_recipe_missing", { missing: missing || t("word_none") })}</span>
-        ${
-          r?.source_type
-            ? `<span class="meta">${currentLang === "ko" ? "\uCD9C\uCC98" : "source"}: ${
-                [
-                  r.source_channel || "",
-                  r.source_title || "",
-                  r.source_type === "youtube" && r.source_url ? r.source_url : ""
-                ]
-                  .filter((v) => String(v || "").trim())
-                  .join(" | ") || r.source_type
-              }</span>`
-            : ""
-        }
-      </div>
-      <div class="item-side"></div>
-    `;
-    node.querySelector(".item-side").appendChild(statusBadge(r.can_make_now ? "fresh" : "expiring_soon"));
+
+    const main = document.createElement("div");
+    main.className = "item-main";
+
+    const name = document.createElement("strong");
+    name.className = "name";
+    name.textContent = String(r.recipe_name || "").trim() || String(r.recipe_id || "");
+    main.appendChild(name);
+
+    const metaLine = document.createElement("span");
+    metaLine.className = "meta";
+    metaLine.textContent = tf("meta_recipe_line", {
+      chef: r.chef,
+      score: r.score,
+      match: `${(r.match_ratio * 100).toFixed(0)}`
+    });
+    main.appendChild(metaLine);
+
+    const metaMissing = document.createElement("span");
+    metaMissing.className = "meta";
+    metaMissing.textContent = tf("meta_recipe_missing", { missing: missing || t("word_none") });
+    main.appendChild(metaMissing);
+
+    if (r?.source_type) {
+      const sourceMeta = document.createElement("span");
+      sourceMeta.className = "meta";
+
+      const sourceLabel = [
+        String(r.source_channel || "").trim(),
+        String(r.source_title || "").trim()
+      ]
+        .filter((v) => v)
+        .join(" | ");
+
+      sourceMeta.appendChild(document.createTextNode(`${t("word_source")}: ${sourceLabel || String(r.source_type)}`));
+      if (r?.source_url) {
+        sourceMeta.appendChild(document.createTextNode(" "));
+        const link = document.createElement("a");
+        link.href = String(r.source_url);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = t("word_link");
+        sourceMeta.appendChild(link);
+      }
+      main.appendChild(sourceMeta);
+    }
+
+    const side = document.createElement("div");
+    side.className = "item-side";
+    side.appendChild(statusBadge(r.can_make_now ? "fresh" : "expiring_soon"));
+
+    node.appendChild(main);
+    node.appendChild(side);
     list.appendChild(node);
   });
 }

@@ -126,6 +126,10 @@ Recipe recommendation sources:
   - The backend merges both files when building recommendations.
   - You can paste recipes extracted from YouTube description ingredient lists into `recipes_youtube.json` (schema example is included in that file).
   - Set `source.type = "youtube"` and `source.url` to preserve reference metadata in recommendation responses.
+- Optional automatic live search (YouTube Data API):
+  - Add `YOUTUBE_API_KEY` and call recommendations with `include_live=true` (default).
+  - The API searches YouTube automatically using current inventory terms and returns reference links.
+  - Optional tuning: `ENABLE_LIVE_RECIPE_SEARCH=true`, `YOUTUBE_SEARCH_MAX_RESULTS=10`, `YOUTUBE_SEARCH_REGION=KR`.
 
 Vision API environment variables:
 
@@ -148,6 +152,12 @@ $env:OPENAI_ENABLE_REVIEW_PHRASE_CLASSIFIER = "true"
 $env:OPENAI_TEXT_CLASSIFIER_MODEL = "gpt-4.1-mini"
 $env:OPENAI_TEXT_CLASSIFIER_MAX_ITEMS = "12"
 $env:OPENAI_TEXT_CLASSIFIER_CACHE_DAYS = "30"
+
+# optional (automatic live recipe search from YouTube)
+$env:YOUTUBE_API_KEY = "AIza..."
+$env:ENABLE_LIVE_RECIPE_SEARCH = "true"
+$env:YOUTUBE_SEARCH_MAX_RESULTS = "10"
+$env:YOUTUBE_SEARCH_REGION = "KR"
 
 # optional SAM3 segmentation hook
 $env:SAM3_SEGMENT_API_URL = "https://your-sam3-service/segment"
@@ -235,7 +245,7 @@ Get recipe recommendations:
 
 ```powershell
 Invoke-RestMethod -Method Get `
-  -Uri "http://localhost:8080/api/v1/recommendations/recipes?user_id=demo-user&top_n=5&ui_lang=ko"
+  -Uri "http://localhost:8080/api/v1/recommendations/recipes?user_id=demo-user&top_n=5&ui_lang=ko&include_live=true"
 ```
 
 Get shopping suggestions:
