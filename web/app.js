@@ -2732,7 +2732,7 @@ async function startRealtimeVoice() {
                 },
                 turn_detection: {
                   type: "server_vad",
-                  create_response: false
+                  create_response: true
                 }
               }
             }
@@ -2933,10 +2933,6 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then(() => {
         appendRealtimeLogLine("system", t("voice_draft_updated"));
         setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-        // End the voice session after a single edit to keep the flow simple.
-        if (isRealtimeConnected()) {
-          stopRealtimeVoice();
-        }
       })
       .catch((err) => {
         const msg = err?.message || "unknown error";
@@ -2957,10 +2953,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     realtimeIngestChain = realtimeIngestChain
       .then(() => replaceVisionObjectLabel(targetId, text, { quantity: 1, unit: "ea" }))
       .then(() => {
-        // End the voice session after a single relabel to keep the flow simple.
-        if (isRealtimeConnected()) {
-          stopRealtimeVoice();
-        }
+        setRealtimeStatus(t("voice_draft_updated"));
       })
       .catch((err) => {
         const msg = err?.message || "unknown error";
@@ -2995,10 +2988,6 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         }
 
         await refreshAll();
-        // End the voice session after a single inventory update to keep the flow simple.
-        if (isRealtimeConnected()) {
-          stopRealtimeVoice();
-        }
         return res;
       })
       .catch((err) => {

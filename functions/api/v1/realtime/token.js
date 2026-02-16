@@ -8,7 +8,7 @@ function resolveOpenAiRealtimeConfig(env) {
   const voice = safeString(env?.OPENAI_REALTIME_VOICE, "alloy");
   const instructions = safeString(
     env?.OPENAI_REALTIME_INSTRUCTIONS,
-    "You are a helpful fridge assistant. You may receive camera snapshots as images. Speak naturally, describe visible ingredients when asked, and ask short clarification questions when uncertain."
+    "You are a helpful fridge assistant. Keep a natural, concise spoken conversation with the user. You may receive camera snapshots as images. Describe visible ingredients when asked, ask short clarification questions when uncertain, and continue the conversation until the user ends it."
   );
   // Prefer the newer transcribe model by default; callers can override via env.
   const transcriptionModel = safeString(env?.OPENAI_REALTIME_TRANSCRIPTION_MODEL, "gpt-4o-mini-transcribe");
@@ -112,8 +112,8 @@ export async function onRequest(context) {
             : undefined,
           turn_detection: {
             type: "server_vad",
-            // We only want the transcript for inventory capture unless the UI explicitly requests a reply.
-            create_response: false
+            // Conversational mode: automatically reply after each speech turn.
+            create_response: true
           }
         },
         output: { voice }
