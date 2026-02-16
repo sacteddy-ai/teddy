@@ -216,6 +216,8 @@ const I18N = {
     voice_draft_updated: "Draft updated from speech.",
     voice_draft_updated_ready: "Added to draft. Review and tap Finalize to save.",
     voice_draft_edit_hint: "Say the new name, or say \"delete\" to remove it.",
+    voice_ack_applied: "Okay, applied.",
+    voice_ack_target_selected: "Spot {index} selected. Say the new name.",
     voice_draft_update_failed: "Draft update failed: {msg}",
     voice_inventory_updated: "Inventory updated: {summary}",
     voice_inventory_no_items: "I couldn't find any food items in that message.",
@@ -1050,7 +1052,7 @@ function extractVisionLabelFromSpeech(rawText) {
   }
   text = text.replace(/\s+/g, " ").trim();
 
-  const notMatch = text.match(/\uC544\uB2C8\uB77C\s*(.+)$/u);
+  const notMatch = text.match(/(?:\uC544\uB2C8\uB77C|\uC544\uB2C8\uACE0)\s*(.+)$/u);
   if (notMatch?.[1]) {
     text = notMatch[1].trim();
   }
@@ -1162,7 +1164,7 @@ function normalizeVisionLabelCandidate(rawLabel) {
   }
 
   if (
-    /(?:\uC65C|\uD588\uB294\uB370|\uB5A4\uB370|\uBC14\uAFD4|\uC218\uC815|\uBCC0\uACBD|\uC544\uB2C8\uB77C|\uC544\uB0D0|\uC544\uB2C8\uC57C|\uB05D|\uB410\uC5B4)/u.test(
+    /(?:\uC65C|\uD588\uB294\uB370|\uB5A4\uB370|\uBC14\uAFD4|\uC218\uC815|\uBCC0\uACBD|\uC544\uB2C8\uB77C|\uC544\uB2C8\uACE0|\uC544\uB0D0|\uC544\uB2C8\uC57C|\uB05D|\uB410\uC5B4)/u.test(
       label
     )
   ) {
@@ -1354,7 +1356,7 @@ function parseCorrectionReplacementLabel(rawText) {
   }
 
   const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
-  const markers = ["\uC544\uB2C8\uB77C", "\uB9D0\uACE0"];
+  const markers = ["\uC544\uB2C8\uB77C", "\uC544\uB2C8\uACE0", "\uB9D0\uACE0"];
 
   const escapeForRegex = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const appearsAsStandaloneNounLike = (source, token) => {
@@ -1386,7 +1388,7 @@ function parseCorrectionReplacementLabel(rawText) {
 
       // ASR can duplicate phrases in one utterance: keep only the final replacement chunk.
       const nestedParts = tail
-        .split(/\s*(?:\uC544\uB2C8\uB77C|\uB9D0\uACE0)\s*/u)
+        .split(/\s*(?:\uC544\uB2C8\uB77C|\uC544\uB2C8\uACE0|\uB9D0\uACE0)\s*/u)
         .map((v) => String(v || "").trim())
         .filter(Boolean);
       if (nestedParts.length > 0) {
@@ -2005,6 +2007,15 @@ function appendRealtimeLogLine(prefix, message) {
   line.textContent = `[${ts}] ${prefix}: ${message}`;
   host.appendChild(line);
   host.scrollTop = host.scrollHeight;
+}
+
+function appendVoiceAck(message) {
+  const msg = String(message || "").trim();
+  if (!msg) {
+    return;
+  }
+  appendRealtimeLogLine("agent", msg);
+  setRealtimeStatus(msg);
 }
 
 function clearRealtimeLog() {
@@ -3490,6 +3501,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then(() => {
         appendRealtimeLogLine("system", t("voice_draft_updated"));
         setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
       })
       .catch((err) => {
         const msg = err?.message || "unknown error";
@@ -3522,6 +3534,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         realtimeLastVisionTargetObjectId = targetObj.id;
         realtimeLastVisionTargetAt = Date.now();
         setRealtimeStatus(t("voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
         closeVisionInlineEditor();
       })
       .catch((err) => {
@@ -3545,6 +3558,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     }
     setVisionRelabelTarget(targetObj.id, { announce: true });
     appendRealtimeLogLine("label_target", `${ordinalTargetOnly.index}`);
+    appendVoiceAck(tf("voice_ack_target_selected", { index: ordinalTargetOnly.index }));
     return;
   }
 
@@ -3574,6 +3588,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
           .then(() => {
             realtimeLastVisionRelabelAt = Date.now();
             setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+            appendVoiceAck(t("voice_ack_applied"));
           })
           .catch((err) => {
             const msg = err?.message || "unknown error";
@@ -3603,6 +3618,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
           realtimeLastVisionTargetObjectId = targetId;
           realtimeLastVisionTargetAt = Date.now();
           setRealtimeStatus(t("voice_draft_updated"));
+          appendVoiceAck(t("voice_ack_applied"));
           closeVisionInlineEditor();
         })
         .catch((err) => {
@@ -3625,6 +3641,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     if (!extractedLabel) {
       appendRealtimeLogLine("label_ignored", text);
       setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
       return;
     }
     setRealtimeStatus(tf("voice_heard", { text }));
@@ -3637,6 +3654,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         realtimeLastVisionTargetObjectId = targetId;
         realtimeLastVisionTargetAt = Date.now();
         setRealtimeStatus(t("voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
         closeVisionInlineEditor();
       })
       .catch((err) => {
@@ -3667,6 +3685,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         .then(() => {
           realtimeLastVisionTargetAt = Date.now();
           setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+          appendVoiceAck(t("voice_ack_applied"));
         })
         .catch((err) => {
           const msg = err?.message || "unknown error";
@@ -3697,6 +3716,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         )
         .then(() => {
           setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+          appendVoiceAck(t("voice_ack_applied"));
         })
         .catch((err) => {
           const msg = err?.message || "unknown error";
@@ -3730,6 +3750,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       .then((res) => {
         appendRealtimeLogLine("system", t("voice_draft_updated"));
         setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
         return res;
       })
       .catch((err) => {
@@ -3779,9 +3800,11 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         if (!summary) {
           appendRealtimeLogLine("system", t("voice_inventory_no_items"));
           setRealtimeStatus(t("voice_inventory_no_items"));
+          appendVoiceAck(t("voice_inventory_no_items"));
         } else {
           appendRealtimeLogLine("system", tf("voice_inventory_updated", { summary }));
           setRealtimeStatus(tf("voice_inventory_updated", { summary }));
+          appendVoiceAck(t("voice_ack_applied"));
         }
 
         await refreshAll();
@@ -3804,11 +3827,12 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         vision_detected_items: []
       })
     )
-    .then((res) => {
-      appendRealtimeLogLine("system", t("voice_draft_updated"));
-      setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-      return res;
-    })
+      .then((res) => {
+        appendRealtimeLogLine("system", t("voice_draft_updated"));
+        setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
+        return res;
+      })
     .catch((err) => {
       const msg = err?.message || "unknown error";
       appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
