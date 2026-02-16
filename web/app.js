@@ -3824,6 +3824,25 @@ const RECIPE_DISH_STOPWORDS = new Set([
   "브이로그"
 ]);
 
+const RECIPE_DISH_STYLE_PATTERNS = [
+  { key: "덮밥", patterns: [/덮밥/u, /\bdonburi\b/i, /\brice bowl\b/i] },
+  { key: "찜", patterns: [/찜/u, /\bsteam(?:ed)?\b/i, /\bsteamed\b/i] },
+  { key: "볶음", patterns: [/볶음/u, /\b볶\b/u, /\bstir[\s-]?fry\b/i] },
+  { key: "조림", patterns: [/조림/u, /\bbraise(?:d)?\b/i, /\bsimmer(?:ed)?\b/i] },
+  { key: "구이", patterns: [/구이/u, /\bgrill(?:ed)?\b/i, /\broast(?:ed)?\b/i] },
+  { key: "찌개", patterns: [/찌개/u, /\bstew\b/i] },
+  { key: "국", patterns: [/(^|[^가-힣])국($|[^가-힣])/u, /\bsoup\b/i] },
+  { key: "탕", patterns: [/탕/u] },
+  { key: "전", patterns: [/(^|[^가-힣])전($|[^가-힣])/u, /\bpancake\b/i, /\bfritter\b/i] },
+  { key: "무침", patterns: [/무침/u] },
+  { key: "샐러드", patterns: [/샐러드/u, /\bsalad\b/i] },
+  { key: "볶음밥", patterns: [/볶음밥/u, /\bfried rice\b/i] },
+  { key: "파스타", patterns: [/파스타/u, /\bpasta\b/i] },
+  { key: "라면", patterns: [/라면/u, /\bramen\b/i, /\bnoodle\b/i] },
+  { key: "카레", patterns: [/카레/u, /\bcurry\b/i] },
+  { key: "김밥", patterns: [/김밥/u, /\bgimbap\b/i, /\bkimbap\b/i] }
+];
+
 function decodeRecipeHtmlEntities(value) {
   return String(value || "")
     .replace(/&amp;/gi, "&")
@@ -3852,6 +3871,32 @@ function compactRecipeTitle(value) {
   return title;
 }
 
+function recipeTitleForClustering(item) {
+  return compactRecipeTitle(item?.recipe_name || item?.source_title || "");
+}
+
+function extractRecipeDishStyle(item) {
+  const text = decodeRecipeHtmlEntities(
+    `${recipeTitleForClustering(item)} ${String(item?.source_title || "").trim()}`
+  )
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return "";
+  }
+
+  for (const entry of RECIPE_DISH_STYLE_PATTERNS) {
+    const patterns = Array.isArray(entry?.patterns) ? entry.patterns : [];
+    for (const pattern of patterns) {
+      if (pattern && pattern.test(text)) {
+        return String(entry.key || "").trim();
+      }
+    }
+  }
+  return "";
+}
+
 function recipeDishDisplayTitle(item) {
   const fromName = compactRecipeTitle(item?.recipe_name || "");
   if (fromName) {
@@ -3865,6 +3910,7 @@ function recipeDishDisplayTitle(item) {
 }
 
 function recipeDishKeyFromItem(item) {
+  const dishStyle = extractRecipeDishStyle(item);
   const requiredKeys = Array.isArray(item?.required_ingredient_keys)
     ? item.required_ingredient_keys
         .map((k) => normalizeIngredientKeyLoose(k))
@@ -3873,10 +3919,13 @@ function recipeDishKeyFromItem(item) {
 
   if (requiredKeys.length > 0) {
     const uniqRequired = Array.from(new Set(requiredKeys)).sort();
+    if (dishStyle) {
+      return `ing:${uniqRequired.slice(0, 6).join("|")}|style:${normalizeIngredientKeyLoose(dishStyle)}`;
+    }
     return `ing:${uniqRequired.slice(0, 6).join("|")}`;
   }
 
-  const base = recipeDishDisplayTitle(item);
+  const base = recipeTitleForClustering(item);
   const tokens = decodeRecipeHtmlEntities(base)
     .toLowerCase()
     .replace(/#[\p{L}\p{N}_-]+/gu, " ")
@@ -3886,10 +3935,17 @@ function recipeDishKeyFromItem(item) {
     .filter((tkn) => tkn.length >= 2 && !RECIPE_DISH_STOPWORDS.has(tkn));
 
   if (tokens.length === 0) {
-    return `raw:${normalizeIngredientKeyLoose(base) || normalizeIngredientKeyLoose(item?.recipe_id || "")}`;
+    const rawKey = normalizeIngredientKeyLoose(base) || normalizeIngredientKeyLoose(item?.recipe_id || "");
+    if (dishStyle) {
+      return `style:${normalizeIngredientKeyLoose(dishStyle)}|raw:${rawKey}`;
+    }
+    return `raw:${rawKey}`;
   }
 
   const uniq = Array.from(new Set(tokens)).sort();
+  if (dishStyle) {
+    return `style:${normalizeIngredientKeyLoose(dishStyle)}|tok:${uniq.slice(0, 6).join("|")}`;
+  }
   return `tok:${uniq.slice(0, 6).join("|")}`;
 }
 
