@@ -1,4 +1,4 @@
-import { getIngredientCatalogEntries } from "./catalog.js";
+import { buildAliasLookup, getIngredientCatalogEntries } from "./catalog.js";
 import { clampNumber, normalizeIngredientKey, normalizeWord, safeString } from "./util.js";
 
 function normalizeLang(value) {
@@ -39,6 +39,47 @@ function safeUrlHostname(value) {
   } catch {
     return "";
   }
+}
+
+function parseBool(value, fallback = false) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return fallback;
+  }
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+    return true;
+  }
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+    return false;
+  }
+  return fallback;
+}
+
+function clampScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return 0;
+  }
+  return Math.round(Math.min(100, Math.max(0, n)) * 100) / 100;
+}
+
+function resolveLiveRecipeIngredientExtractorConfig(env) {
+  const apiKey = safeString(env?.OPENAI_API_KEY, "");
+  const enabledRaw = safeString(env?.OPENAI_ENABLE_LIVE_RECIPE_INGREDIENT_EXTRACTOR, "").toLowerCase();
+  const enabled = enabledRaw ? parseBool(enabledRaw, false) : Boolean(apiKey);
+
+  return {
+    enabled,
+    api_key: apiKey,
+    base_url: safeString(env?.OPENAI_BASE_URL, "https://api.openai.com/v1"),
+    model: safeString(env?.OPENAI_LIVE_RECIPE_EXTRACT_MODEL, "gpt-4.1-mini"),
+    max_candidates: clampNumber(env?.OPENAI_LIVE_RECIPE_EXTRACT_MAX_CANDIDATES, 8, 1, 20),
+    max_ingredients: clampNumber(env?.OPENAI_LIVE_RECIPE_EXTRACT_MAX_INGREDIENTS, 24, 4, 60),
+    max_text_chars: clampNumber(env?.OPENAI_LIVE_RECIPE_EXTRACT_MAX_TEXT_CHARS, 5000, 600, 12000),
+    fetch_page_content: parseBool(safeString(env?.LIVE_RECIPE_FETCH_PAGE_CONTENT, "true"), true),
+    page_fetch_timeout_ms: clampNumber(env?.LIVE_RECIPE_FETCH_TIMEOUT_MS, 5000, 1200, 20000),
+    page_fetch_max_chars: clampNumber(env?.LIVE_RECIPE_FETCH_MAX_CHARS, 4500, 600, 12000)
+  };
 }
 
 function resolveLiveRecipeConfig(env) {
@@ -103,7 +144,8 @@ function resolveLiveRecipeConfig(env) {
     youtube,
     naver,
     google,
-    themealdb
+    themealdb,
+    ingredient_extractor: resolveLiveRecipeIngredientExtractorConfig(env)
   };
 }
 
@@ -330,6 +372,36 @@ function scoreByText(title, text, terms) {
   };
 }
 
+function getProviderQualityBoost(provider) {
+  const p = String(provider || "").trim().toLowerCase();
+  if (p === "naver_blog") {
+    return 6;
+  }
+  if (p === "naver_web") {
+    return 5;
+  }
+  if (p === "youtube") {
+    return 4;
+  }
+  if (p === "google") {
+    return 3;
+  }
+  if (p === "themealdb") {
+    return 3;
+  }
+  return 2;
+}
+
+function computeTextOnlyLiveScore(scoreMeta, provider, langBoostRaw) {
+  const ratio = Number(scoreMeta?.match_ratio || 0);
+  const hits = Number(scoreMeta?.term_hits || 0);
+  const langBoost = Math.min(12, Math.max(0, Number(langBoostRaw || 0) / 3));
+  const providerBoost = getProviderQualityBoost(provider);
+  const hitBoost = Math.min(20, Math.max(0, hits) * 5);
+  const value = ratio * 60 + hitBoost + providerBoost + langBoost;
+  return clampScore(value);
+}
+
 function toRecipeId(prefix, sourceKey, idx = 0) {
   const normalized = normalizeIngredientKey(sourceKey || "");
   if (normalized) {
@@ -352,13 +424,6 @@ function makeRecipeItem({
   idx = 0
 }) {
   const scoreMeta = scoreByText(title, description, inventoryTerms);
-  const providerBoost =
-    provider === "youtube" ? 6 :
-    provider === "google" ? 4 :
-    provider === "naver_blog" ? 4 :
-    provider === "naver_web" ? 3 :
-    provider === "themealdb" ? 5 :
-    0;
   const langBoost = getLanguageContentBoost({
     lang,
     provider,
@@ -367,7 +432,7 @@ function makeRecipeItem({
     sourceUrl,
     sourceChannel
   });
-  const score = Math.round((scoreMeta.match_ratio * 100 + scoreMeta.term_hits * 5 + providerBoost + langBoost) * 100) / 100;
+  const score = computeTextOnlyLiveScore(scoreMeta, provider, langBoost);
 
   return {
     recipe_id: toRecipeId(provider, sourceUrl || title, idx),
@@ -382,12 +447,17 @@ function makeRecipeItem({
     expiring_soon_used_count: 0,
     match_ratio: scoreMeta.match_ratio,
     score,
+    score_v2: true,
+    ingredient_extraction_status: "pending",
+    text_term_hits: scoreMeta.term_hits,
+    text_match_ratio: scoreMeta.match_ratio,
     source_type: sourceType || provider,
     source_provider: provider,
     source_url: sourceUrl || null,
     source_title: sourceTitle || String(title || "").trim() || null,
     source_channel: sourceChannel || null,
-    source_published_at: publishedAt
+    source_published_at: publishedAt,
+    source_description: String(description || "").trim() || null
   };
 }
 
@@ -447,6 +517,7 @@ async function searchYoutube(cfg, query, inventoryTerms, lang, topN) {
       const snippet = row?.snippet && typeof row.snippet === "object" ? row.snippet : {};
       const title = cleanText(snippet?.title || "") || `YouTube recipe ${idx + 1}`;
       const channel = cleanText(snippet?.channelTitle || "") || "YouTube";
+      const description = cleanText(snippet?.description || "");
       const publishedAt = snippet?.publishedAt ? String(snippet.publishedAt).trim() : null;
       const sourceUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
       return makeRecipeItem({
@@ -456,7 +527,7 @@ async function searchYoutube(cfg, query, inventoryTerms, lang, topN) {
         sourceTitle: title,
         sourceChannel: channel,
         title,
-        description: "",
+        description,
         publishedAt,
         inventoryTerms,
         lang,
@@ -773,6 +844,381 @@ async function searchThemealdb(cfg, inventoryItems, inventoryTerms, topN) {
   };
 }
 
+function buildInventoryAvailabilityMap(inventoryItems) {
+  const rows = Array.isArray(inventoryItems) ? inventoryItems : [];
+  const map = new Map();
+
+  for (const item of rows) {
+    const key = normalizeIngredientKey(String(item?.ingredient_key || item?.ingredient_name || "").trim());
+    if (!key) {
+      continue;
+    }
+    const qty = Number(item?.quantity || 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      continue;
+    }
+    const status = String(item?.status || "fresh").trim().toLowerCase();
+    if (status === "expired") {
+      continue;
+    }
+
+    if (!map.has(key)) {
+      map.set(key, {
+        ingredient_key: key,
+        total_quantity: 0,
+        expiring_soon_quantity: 0
+      });
+    }
+
+    const entry = map.get(key);
+    entry.total_quantity = Math.round((Number(entry.total_quantity || 0) + qty) * 100) / 100;
+    if (status === "expiring_soon") {
+      entry.expiring_soon_quantity = Math.round((Number(entry.expiring_soon_quantity || 0) + qty) * 100) / 100;
+    }
+  }
+
+  return map;
+}
+
+function shouldFetchRecipePageContent(item, extractorCfg) {
+  if (!extractorCfg?.fetch_page_content) {
+    return false;
+  }
+  const url = String(item?.source_url || "").trim();
+  if (!url) {
+    return false;
+  }
+  const host = safeUrlHostname(url).toLowerCase();
+  if (!host) {
+    return false;
+  }
+  if (host.includes("youtube.com") || host.includes("youtu.be")) {
+    return false;
+  }
+  return true;
+}
+
+async function fetchRecipePageText(url, extractorCfg) {
+  const target = String(url || "").trim();
+  if (!target) {
+    return "";
+  }
+
+  const timeoutMs = Math.max(1000, Number(extractorCfg?.page_fetch_timeout_ms || 5000));
+  const maxChars = Math.max(300, Number(extractorCfg?.page_fetch_max_chars || 4500));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+  try {
+    const res = await fetch(target, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html, text/plain;q=0.9, application/json;q=0.3"
+      }
+    });
+    if (!res.ok) {
+      return "";
+    }
+
+    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+    const looksText =
+      !contentType ||
+      contentType.includes("text/html") ||
+      contentType.includes("text/plain") ||
+      contentType.includes("application/json") ||
+      contentType.includes("application/ld+json");
+    if (!looksText) {
+      return "";
+    }
+
+    const raw = await res.text();
+    if (!raw) {
+      return "";
+    }
+    return cleanText(raw).slice(0, maxChars);
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeIngredientNameCandidate(value) {
+  const cleaned = cleanText(value)
+    .replace(/\b\d+(?:\.\d+)?\s*(g|kg|ml|l|tbsp|tsp|cup|cups|개|봉|팩|큰술|작은술|스푼)\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || cleaned.length < 2) {
+    return "";
+  }
+  return cleaned;
+}
+
+function resolveExtractedIngredientKeys(names, aliasLookup, maxItems = 24) {
+  const rows = Array.isArray(names) ? names : [];
+  const out = [];
+  const seen = new Set();
+
+  for (const raw of rows) {
+    const name = normalizeIngredientNameCandidate(raw);
+    if (!name) {
+      continue;
+    }
+
+    const normalized = normalizeWord(name);
+    let key = "";
+    const mention = normalized && aliasLookup ? aliasLookup.get(normalized) : null;
+    if (mention?.ingredient_key) {
+      key = normalizeIngredientKey(String(mention.ingredient_key));
+    } else {
+      key = normalizeIngredientKey(name);
+    }
+
+    if (!key || key.length < 2 || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(key);
+    if (out.length >= maxItems) {
+      break;
+    }
+  }
+
+  return out;
+}
+
+function computeInventoryAwareLiveScore(item, requiredKeys, inventoryMap) {
+  const required = Array.isArray(requiredKeys) ? requiredKeys : [];
+  const matched = [];
+  const missing = [];
+  let expiringSoonUsedCount = 0;
+
+  for (const key of required) {
+    const entry = inventoryMap.get(key);
+    if (entry && Number(entry.total_quantity || 0) > 0) {
+      matched.push(key);
+      if (Number(entry.expiring_soon_quantity || 0) > 0) {
+        expiringSoonUsedCount += 1;
+      }
+    } else {
+      missing.push(key);
+    }
+  }
+
+  const requiredCount = required.length;
+  const matchedCount = matched.length;
+  const missingCount = missing.length;
+  const ratioFallback = Math.min(1, Math.max(0, Number(item?.text_match_ratio || item?.match_ratio || 0)));
+  const matchRatio = requiredCount > 0 ? matchedCount / requiredCount : ratioFallback;
+  const canMakeNow = requiredCount > 0 ? missingCount === 0 : false;
+
+  const coverage = matchRatio * 72;
+  const readinessBonus = canMakeNow ? 16 : 0;
+  const expiringBonus = Math.min(8, expiringSoonUsedCount * 2);
+  const providerBonus = getProviderQualityBoost(item?.source_provider || item?.source_type || "");
+  const missingPenalty = requiredCount > 0 ? Math.min(28, missingCount * 4) : 0;
+  const textFallback = requiredCount === 0 ? Math.min(10, Number(item?.text_term_hits || 0) * 2) : 0;
+  const score = clampScore(coverage + readinessBonus + expiringBonus + providerBonus + textFallback - missingPenalty);
+
+  return {
+    required_keys: required,
+    matched_keys: matched,
+    missing_keys: missing,
+    match_ratio: Math.round(matchRatio * 1000) / 1000,
+    can_make_now: canMakeNow,
+    expiring_soon_used_count: expiringSoonUsedCount,
+    score
+  };
+}
+
+async function extractRecipeIngredientsWithOpenAI(context, candidates, lang, extractorCfg) {
+  if (!extractorCfg?.enabled || !extractorCfg?.api_key) {
+    return { ok: false, recipes: [], error: "extractor_disabled_or_missing_key" };
+  }
+
+  const rows = Array.isArray(candidates) ? candidates : [];
+  if (rows.length === 0) {
+    return { ok: true, recipes: [], error: null };
+  }
+
+  const prompt = [
+    "Extract cooking ingredients for each recipe candidate.",
+    "Return only ingredients that are actual food components used in the recipe.",
+    "Do not include tools, cookware, or serving words.",
+    "Do not include quantity/unit text in ingredient names.",
+    "Keep ingredient names in original language from the text.",
+    "Deduplicate per recipe.",
+    "",
+    "Return JSON only with this shape:",
+    "{\"recipes\":[{\"id\":\"...\",\"ingredients\":[\"...\"]}]}",
+    "",
+    `Return at most ${extractorCfg.max_ingredients} ingredients per recipe.`
+  ].join("\n");
+
+  const payload = {
+    model: extractorCfg.model,
+    temperature: 0,
+    messages: [
+      { role: "system", content: "Return JSON only." },
+      { role: "user", content: prompt },
+      {
+        role: "user",
+        content: JSON.stringify({
+          language: normalizeLang(lang),
+          recipes: rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            text: String(row.text || "").slice(0, extractorCfg.max_text_chars)
+          }))
+        })
+      }
+    ],
+    response_format: { type: "json_object" }
+  };
+
+  const url = `${extractorCfg.base_url.replace(/\/+$/g, "")}/chat/completions`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${extractorCfg.api_key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const rawText = await res.text();
+  let parsed = null;
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    parsed = null;
+  }
+
+  if (!res.ok) {
+    const errMsg = parsed?.error?.message || parsed?.message || `live_recipe_extract_failed_${res.status}`;
+    return { ok: false, recipes: [], error: errMsg };
+  }
+
+  const content = parsed?.choices?.[0]?.message?.content ?? "";
+  let obj = null;
+  try {
+    obj = content ? JSON.parse(content) : null;
+  } catch {
+    obj = null;
+  }
+
+  const recipes = Array.isArray(obj?.recipes) ? obj.recipes : [];
+  return { ok: true, recipes, error: null };
+}
+
+async function enrichLiveRecipesWithIngredientExtraction(context, items, inventoryItems, userId, lang, extractorCfg) {
+  const rows = Array.isArray(items) ? items : [];
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  if (!extractorCfg?.enabled || !extractorCfg?.api_key) {
+    return rows.map((item) => ({
+      ...item,
+      score: clampScore(item?.score),
+      ingredient_extraction_status:
+        String(item?.ingredient_extraction_status || "").trim() || "disabled"
+    }));
+  }
+
+  const aliasLookup = await buildAliasLookup(context, userId);
+  const inventoryMap = buildInventoryAvailabilityMap(inventoryItems);
+  const candidatesTarget = rankCombinedResults(dedupeRecipeResults(rows)).slice(
+    0,
+    Math.min(rows.length, extractorCfg.max_candidates)
+  );
+
+  const candidateRows = await Promise.all(
+    candidatesTarget.map(async (item) => {
+      const sourceDescription = String(item?.source_description || "").trim();
+      let text = cleanText(
+        [item?.recipe_name, item?.source_title, item?.source_channel, sourceDescription].filter((v) => String(v || "").trim()).join(" ")
+      );
+
+      if (shouldFetchRecipePageContent(item, extractorCfg)) {
+        const fetched = await fetchRecipePageText(item?.source_url || "", extractorCfg);
+        if (fetched) {
+          text = cleanText(`${text} ${fetched}`);
+        }
+      }
+
+      text = String(text || "").slice(0, extractorCfg.max_text_chars);
+      if (!text) {
+        return null;
+      }
+      return {
+        id: String(item?.recipe_id || "").trim(),
+        title: String(item?.recipe_name || "").trim(),
+        text
+      };
+    })
+  );
+
+  const candidates = candidateRows.filter((row) => row && row.id && row.text);
+  if (candidates.length === 0) {
+    return rows.map((item) => ({
+      ...item,
+      score: clampScore(item?.score),
+      ingredient_extraction_status: "unavailable"
+    }));
+  }
+
+  const extraction = await extractRecipeIngredientsWithOpenAI(context, candidates, lang, extractorCfg);
+  if (!extraction.ok) {
+    return rows.map((item) => ({
+      ...item,
+      score: clampScore(item?.score),
+      ingredient_extraction_status: "unavailable"
+    }));
+  }
+
+  const extractedByRecipeId = new Map();
+  for (const row of extraction.recipes || []) {
+    const id = String(row?.id || "").trim();
+    if (!id) {
+      continue;
+    }
+    const ingredients = Array.isArray(row?.ingredients) ? row.ingredients : [];
+    extractedByRecipeId.set(id, ingredients);
+  }
+
+  return rows.map((item) => {
+    const recipeId = String(item?.recipe_id || "").trim();
+    const extractedNames = recipeId ? extractedByRecipeId.get(recipeId) : null;
+    if (!Array.isArray(extractedNames)) {
+      return {
+        ...item,
+        score: clampScore(item?.score),
+        ingredient_extraction_status: "unavailable"
+      };
+    }
+
+    const requiredKeys = resolveExtractedIngredientKeys(extractedNames, aliasLookup, extractorCfg.max_ingredients);
+    const scoreInfo = computeInventoryAwareLiveScore(item, requiredKeys, inventoryMap);
+    return {
+      ...item,
+      required_ingredient_keys: scoreInfo.required_keys,
+      optional_ingredient_keys: [],
+      matched_ingredient_keys: scoreInfo.matched_keys,
+      missing_ingredient_keys: scoreInfo.missing_keys,
+      can_make_now: scoreInfo.can_make_now,
+      expiring_soon_used_count: scoreInfo.expiring_soon_used_count,
+      match_ratio: scoreInfo.match_ratio,
+      score: scoreInfo.score,
+      score_v2: true,
+      ingredient_extraction_status: requiredKeys.length > 0 ? "ok" : "empty",
+      ingredient_extraction_source: "openai_live_recipe_v1"
+    };
+  });
+}
+
 function rankCombinedResults(items) {
   const rows = Array.isArray(items) ? items : [];
   rows.sort((a, b) => {
@@ -856,7 +1302,17 @@ export async function getLiveRecipeRecommendations(context, inventoryItems, opti
     combined.push(...(Array.isArray(result?.items) ? result.items : []));
   }
 
-  const ranked = rankCombinedResults(dedupeRecipeResults(combined)).slice(0, topN);
+  const deduped = dedupeRecipeResults(combined);
+  const preRanked = rankCombinedResults(deduped);
+  const enriched = await enrichLiveRecipesWithIngredientExtraction(
+    context,
+    preRanked,
+    inventoryItems,
+    userId,
+    lang,
+    cfg.ingredient_extractor
+  );
+  const ranked = rankCombinedResults(dedupeRecipeResults(enriched)).slice(0, topN);
   return {
     items: ranked,
     count: ranked.length,

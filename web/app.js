@@ -220,6 +220,7 @@ const I18N = {
     meta_inventory_line: "{qty} {unit} | {storage} | exp {exp} | D{days}",
     meta_recipe_line: "{chef} | score {score} | match {match}%",
     meta_recipe_missing: "missing: {missing}",
+    meta_recipe_missing_unknown: "missing: analyzing ingredients",
     meta_shopping_reasons: "reasons: {reasons}",
     meta_shopping_related: "related recipes: {related}",
     toast_order_draft_created: "Order draft created: {id} ({count} items)",
@@ -391,6 +392,7 @@ const I18N = {
     meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
     meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
     meta_recipe_missing: "부족: {missing}",
+    meta_recipe_missing_unknown: "부족: 재료 분석 중",
     meta_shopping_reasons: "이유: {reasons}",
     meta_shopping_related: "연관 레시피: {related}",
     toast_order_draft_created: "주문 초안 생성: {id} ({count}개)",
@@ -3844,6 +3846,11 @@ function buildRecipeNode(r) {
     .map((k) => ingredientLabel(k, k))
     .filter((v) => String(v || "").trim())
     .join(", ");
+  const extractionStatus = String(r?.ingredient_extraction_status || "").trim().toLowerCase();
+  let missingLabel = missing || t("word_none");
+  if (!missing && (extractionStatus === "pending" || extractionStatus === "unavailable")) {
+    missingLabel = t("meta_recipe_missing_unknown");
+  }
 
   const main = document.createElement("div");
   main.className = "item-main";
@@ -3864,7 +3871,7 @@ function buildRecipeNode(r) {
 
   const metaMissing = document.createElement("span");
   metaMissing.className = "meta";
-  metaMissing.textContent = tf("meta_recipe_missing", { missing: missing || t("word_none") });
+  metaMissing.textContent = tf("meta_recipe_missing", { missing: missingLabel });
   main.appendChild(metaMissing);
 
   if (r?.source_type) {
