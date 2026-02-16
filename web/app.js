@@ -805,39 +805,6 @@ function getSelectedVisionObject() {
   return (visionObjectsCache || []).find((o) => String(o?.id || "").trim() === id) || null;
 }
 
-function openVisionObjectEdit(objectId) {
-  const id = String(objectId || "").trim();
-  if (!id) {
-    return;
-  }
-  const list = $("visionObjectList");
-  if (!list) {
-    return;
-  }
-  let node = null;
-  list.querySelectorAll(".vision-object").forEach((n) => {
-    if (node) {
-      return;
-    }
-    const oid = String(n?.dataset?.objectId || "");
-    if (oid === id) {
-      node = n;
-    }
-  });
-  if (!node) {
-    return;
-  }
-  const row = node.querySelector(".vision-edit-row");
-  const input = node.querySelector(".vision-edit-input");
-  if (row) {
-    row.hidden = false;
-  }
-  if (input) {
-    input.focus();
-    input.select?.();
-  }
-}
-
 function getVisionObjectDisplayLabel(obj) {
   const key = obj?.ingredient_key || "";
   const fallback = obj?.ingredient_name || obj?.name || key;
@@ -950,8 +917,7 @@ function getVisionInlineEditorElements() {
     editor: $("visionInlineEditor"),
     input: $("visionInlineInput"),
     saveBtn: $("visionInlineSaveBtn"),
-    cancelBtn: $("visionInlineCancelBtn"),
-    voiceBtn: $("visionInlineVoiceBtn")
+    cancelBtn: $("visionInlineCancelBtn")
   };
 }
 
@@ -1434,146 +1400,8 @@ function renderVisionObjectPreview(options = {}) {
 
   const list = $("visionObjectList");
   if (list) {
+    list.hidden = true;
     list.innerHTML = "";
-
-    (visionObjectsCache || []).forEach((obj, idx) => {
-      const node = document.createElement("div");
-      node.className = "item vision-object";
-      node.dataset.objectId = String(obj?.id || "");
-      node.addEventListener("click", () => selectVisionObject(obj?.id));
-
-      const label = getVisionObjectDisplayLabel(obj);
-      const metaText = isEasyMode() ? "" : obj?.ingredient_key ? `key ${obj.ingredient_key}` : "";
-      const confidence = String(obj?.confidence || "").toLowerCase();
-      const badgeClass = confidence === "low" ? "expiring_soon" : "fresh";
-      const badgeText = confidence === "low" ? t("vision_badge_low") : t("vision_badge_ok");
-
-      node.innerHTML = `
-        <div class="item-main">
-          <strong class="name">${idx + 1}. ${label}</strong>
-          <span class="meta">${metaText}</span>
-          <div class="vision-edit-row" hidden>
-            <input class="vision-edit-input" type="text" value="${label.replace(/\"/g, "&quot;")}">
-            <button type="button" class="btn tiny secondary save-btn">${t("btn_save_label")}</button>
-            <button type="button" class="btn tiny ghost cancel-btn">${t("btn_cancel_label")}</button>
-          </div>
-        </div>
-        <div class="item-side">
-          <span class="badge ${badgeClass}">${badgeText}</span>
-          <button type="button" class="btn tiny ghost edit-btn">${t("btn_edit_label")}</button>
-          <button type="button" class="btn tiny ghost edit-voice-btn">${t("btn_edit_label_voice")}</button>
-          <button type="button" class="btn tiny warn delete-btn">${t("btn_delete_box")}</button>
-        </div>
-      `;
-
-      const editBtn = node.querySelector(".edit-btn");
-      const voiceBtn = node.querySelector(".edit-voice-btn");
-      const editRow = node.querySelector(".vision-edit-row");
-      const input = node.querySelector(".vision-edit-input");
-      const saveBtn = node.querySelector(".save-btn");
-      const cancelBtn = node.querySelector(".cancel-btn");
-
-      if (editBtn && editRow) {
-        editBtn.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          editRow.hidden = !editRow.hidden;
-          if (!editRow.hidden && input) {
-            input.focus();
-            input.select?.();
-          }
-        });
-      }
-
-      if (cancelBtn && editRow) {
-        cancelBtn.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          editRow.hidden = true;
-        });
-      }
-
-      if (input && saveBtn && cancelBtn && editRow) {
-        input.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            saveBtn.click();
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            cancelBtn.click();
-          }
-        });
-      }
-
-      if (saveBtn && input && editRow) {
-        saveBtn.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          saveBtn.disabled = true;
-          try {
-            await replaceVisionObjectLabel(obj?.id, input.value, { quantity: 1, unit: "ea" });
-            editRow.hidden = true;
-          } catch (err) {
-            const msg = err?.message || String(err);
-            setGlobalError(msg);
-            setCaptureError(msg);
-          } finally {
-            saveBtn.disabled = false;
-          }
-        });
-      }
-
-      if (voiceBtn) {
-        voiceBtn.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setVisionRelabelTarget(obj?.id, { announce: false });
-          realtimeLastIngestedText = "";
-          realtimeLastIngestedAt = 0;
-          setRealtimeStatus(`${t("btn_edit_label_voice")}: ${idx + 1}. ${label}. ${t("voice_draft_edit_hint")}`);
-          updateQuickTalkButton();
-          try {
-            if (realtimeQuotaBlocked) {
-              startBrowserSpeechRecognition();
-            } else {
-              await startRealtimeVoice();
-            }
-          } catch (err) {
-            const msg = err?.message || String(err);
-            setGlobalError(msg);
-            setCaptureError(msg);
-          }
-        });
-      }
-
-      const deleteBtn = node.querySelector(".delete-btn");
-      if (deleteBtn) {
-        deleteBtn.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const ok = confirm(`${t("btn_delete_box")}: ${label}?`);
-          if (!ok) {
-            return;
-          }
-          deleteBtn.disabled = true;
-          try {
-            await deleteVisionObject(obj?.id);
-          } catch (err) {
-            const msg = err?.message || String(err);
-            setGlobalError(msg);
-            setCaptureError(msg);
-          } finally {
-            deleteBtn.disabled = false;
-          }
-        });
-      }
-
-      list.appendChild(node);
-    });
   }
 
   const { editor } = getVisionInlineEditorElements();
@@ -4880,7 +4708,7 @@ function bindEvents() {
     canvas.addEventListener("dblclick", onDoubleClick);
   }
   if ($("visionInlineEditor")) {
-    const { editor, input, saveBtn, cancelBtn, voiceBtn } = getVisionInlineEditorElements();
+    const { input, saveBtn, cancelBtn } = getVisionInlineEditorElements();
     if (saveBtn) {
       saveBtn.addEventListener("click", async (event) => {
         event.preventDefault();
@@ -4907,37 +4735,6 @@ function bindEvents() {
         if (event.key === "Escape") {
           event.preventDefault();
           closeVisionInlineEditor();
-        }
-      });
-    }
-    if (voiceBtn) {
-      voiceBtn.addEventListener("click", async (event) => {
-        event.preventDefault();
-        const objectId = String(editor?.dataset?.objectId || "").trim();
-        if (!objectId) {
-          return;
-        }
-        setVisionRelabelTarget(objectId, { announce: true });
-        closeVisionInlineEditor();
-        realtimeLastIngestedText = "";
-        realtimeLastIngestedAt = 0;
-        updateQuickTalkButton();
-        try {
-          if (!isVoiceCaptureRunning()) {
-            if (realtimeQuotaBlocked) {
-              if (!isBrowserSpeechSupported()) {
-                throw new Error("Speech recognition is not supported in this browser.");
-              }
-              startBrowserSpeechRecognition();
-            } else {
-              await startRealtimeVoice();
-            }
-          }
-        } catch (err) {
-          const msg = err?.message || String(err);
-          setGlobalError(msg);
-          setCaptureError(msg);
-          setRealtimeStatus(tf("voice_start_failed", { msg }));
         }
       });
     }
@@ -4987,6 +4784,16 @@ function bindEvents() {
         btn.disabled = true;
       }
       try {
+        if (!isRealtimeConnected() && !browserSpeechRunning) {
+          const selected = getSelectedVisionObject();
+          if (selected?.id) {
+            setVisionRelabelTarget(selected.id, { announce: true });
+            closeVisionInlineEditor();
+            realtimeLastIngestedText = "";
+            realtimeLastIngestedAt = 0;
+          }
+        }
+
         if (isRealtimeConnected()) {
           const pendingText = String(realtimeUserTranscriptDelta || "").trim();
           realtimeUserTranscriptDelta = "";
