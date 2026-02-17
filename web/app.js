@@ -4311,6 +4311,23 @@ function formatQuantityValue(value) {
   return String(rounded);
 }
 
+function confirmDeleteByMinusSingle() {
+  const msg =
+    currentLang === "ko"
+      ? "수량이 1이라 이 항목이 삭제됩니다. 삭제하시겠습니까?"
+      : "Quantity is 1, so this item will be removed. Remove it?";
+  return confirm(msg);
+}
+
+function confirmDeleteByMinusBulk(removeCount) {
+  const count = Math.max(1, Number(removeCount || 0));
+  const msg =
+    currentLang === "ko"
+      ? `선택한 항목 중 ${count}개가 삭제됩니다. 계속하시겠습니까?`
+      : `${count} selected item(s) will be removed. Continue?`;
+  return confirm(msg);
+}
+
 function detectDefaultInventoryFilterStorage() {
   const stored = String(localStorage.getItem(INVENTORY_FILTER_STORAGE_KEY) || "").trim();
   if (stored) {
@@ -4498,6 +4515,22 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
   if (selected.length === 0) {
     return;
   }
+  if (Number(deltaQuantity) < 0) {
+    const removeThreshold = Math.abs(Number(deltaQuantity || 0));
+    const qtyById = new Map(
+      visible.map((row) => [String(row?.id || ""), Number(row?.quantity || 0)])
+    );
+    const removeCount = selected.reduce((acc, id) => {
+      const qty = Number(qtyById.get(String(id)) || 0);
+      if (qty > 0 && qty <= removeThreshold + 0.000001) {
+        return acc + 1;
+      }
+      return acc;
+    }, 0);
+    if (removeCount > 0 && !confirmDeleteByMinusBulk(removeCount)) {
+      return;
+    }
+  }
 
   const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
@@ -4565,6 +4598,14 @@ function buildInventoryNode(item) {
   };
 
   const applyItemDelta = async (delta) => {
+    const qtyNow = Number(item?.quantity || 0);
+    const removeThreshold = Math.abs(Number(delta || 0));
+    if (Number(delta) < 0 && qtyNow > 0 && qtyNow <= removeThreshold + 0.000001) {
+      if (!confirmDeleteByMinusSingle()) {
+        return;
+      }
+    }
+
     setAdjustDisabled(true);
     try {
       const mutation = await adjustInventoryItemQuantity(item.id, delta);
