@@ -28,30 +28,57 @@ export function clearShelfLifeRuleCache() {
   ruleCache = null;
 }
 
-function findRule(rules, ingredientName, storageType, conditionType) {
-  const normalized = normalizeWord(ingredientName);
-  const candidates = rules.filter(
-    (r) => r?.storage_type === storageType && r?.condition_type === conditionType
-  );
-
-  const exact = candidates.find((r) => normalizeWord(r?.ingredient_key || "") === normalized);
+function pickRuleFromCandidates(candidates, normalizedIngredient) {
+  const rows = Array.isArray(candidates) ? candidates : [];
+  const exact = rows.find((r) => normalizeWord(r?.ingredient_key || "") === normalizedIngredient);
   if (exact) {
     return exact;
   }
 
-  for (const r of candidates) {
+  for (const r of rows) {
     const aliases = Array.isArray(r?.aliases) ? r.aliases : [];
     for (const rawAlias of aliases) {
       const a = normalizeWord(rawAlias);
-      if (a && a === normalized) {
+      if (a && a === normalizedIngredient) {
         return r;
       }
     }
   }
 
-  const fallback = candidates.find((r) => normalizeWord(r?.ingredient_key || "") === "default_perishable");
-  if (fallback) {
-    return fallback;
+  return rows.find((r) => normalizeWord(r?.ingredient_key || "") === "default_perishable") || null;
+}
+
+function selectCandidates(rules, storageType = null, conditionType = null) {
+  return (Array.isArray(rules) ? rules : []).filter((r) => {
+    if (storageType !== null && r?.storage_type !== storageType) {
+      return false;
+    }
+    if (conditionType !== null && r?.condition_type !== conditionType) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function findRule(rules, ingredientName, storageType, conditionType) {
+  const normalized = normalizeWord(ingredientName);
+
+  const conditionAlt = conditionType === "opened" ? "unopened" : "opened";
+  const searchOrder = [
+    { storage: storageType, condition: conditionType },
+    { storage: storageType, condition: conditionAlt },
+    { storage: storageType, condition: null },
+    { storage: null, condition: conditionType },
+    { storage: null, condition: conditionAlt },
+    { storage: null, condition: null }
+  ];
+
+  for (const scope of searchOrder) {
+    const candidates = selectCandidates(rules, scope.storage, scope.condition);
+    const rule = pickRuleFromCandidates(candidates, normalized);
+    if (rule) {
+      return rule;
+    }
   }
 
   throw new Error(`No shelf-life rule found for '${ingredientName}' (${storageType}, ${conditionType}).`);
@@ -147,4 +174,3 @@ export async function getExpirationSuggestion(context, input) {
     rule_source: ruleContext ? String(ruleContext.source || "") : null
   };
 }
-

@@ -84,31 +84,53 @@ function Find-Rule {
   $rules = Get-ShelfLifeRules -RulesPath $RulesPath
   $normalized = Normalize-IngredientName -IngredientName $IngredientName
 
-  $candidates = @($rules | Where-Object {
-    $_.storage_type -eq $StorageType -and $_.condition_type -eq $ConditionType
-  })
+  $pickFromCandidates = {
+    param([array]$Candidates, [string]$Normalized)
 
-  $exact = @($candidates | Where-Object {
-    $_.ingredient_key -eq $normalized
-  } | Select-Object -First 1)
-  if ($exact.Count -gt 0) {
-    return $exact[0]
+    $exact = @($Candidates | Where-Object {
+      $_.ingredient_key -eq $Normalized
+    } | Select-Object -First 1)
+    if ($exact.Count -gt 0) {
+      return $exact[0]
+    }
+
+    $aliasMatch = @($Candidates | Where-Object {
+      $aliases = @($_.aliases) | ForEach-Object { $_.ToString().Trim().ToLowerInvariant() }
+      $aliases -contains $Normalized
+    } | Select-Object -First 1)
+    if ($aliasMatch.Count -gt 0) {
+      return $aliasMatch[0]
+    }
+
+    $fallback = @($Candidates | Where-Object {
+      $_.ingredient_key -eq "default_perishable"
+    } | Select-Object -First 1)
+    if ($fallback.Count -gt 0) {
+      return $fallback[0]
+    }
+
+    return $null
   }
 
-  $aliasMatch = @($candidates | Where-Object {
-    $aliases = @($_.aliases) | ForEach-Object { $_.ToString().Trim().ToLowerInvariant() }
-    $aliases -contains $normalized
-  } | Select-Object -First 1)
-  if ($aliasMatch.Count -gt 0) {
-    return $aliasMatch[0]
-  }
+  $conditionAlt = if ($ConditionType -eq "opened") { "unopened" } else { "opened" }
+  $scopes = @(
+    @{ storage = $StorageType; condition = $ConditionType },
+    @{ storage = $StorageType; condition = $conditionAlt },
+    @{ storage = $StorageType; condition = $null },
+    @{ storage = $null; condition = $ConditionType },
+    @{ storage = $null; condition = $conditionAlt },
+    @{ storage = $null; condition = $null }
+  )
 
-  $fallback = @($candidates | Where-Object {
-    $_.ingredient_key -eq "default_perishable"
-  } | Select-Object -First 1)
-
-  if ($fallback.Count -gt 0) {
-    return $fallback[0]
+  foreach ($scope in $scopes) {
+    $candidates = @($rules | Where-Object {
+      ($null -eq $scope.storage -or $_.storage_type -eq $scope.storage) -and
+      ($null -eq $scope.condition -or $_.condition_type -eq $scope.condition)
+    })
+    $picked = & $pickFromCandidates -Candidates $candidates -Normalized $normalized
+    if ($null -ne $picked) {
+      return $picked
+    }
   }
 
   throw "No shelf-life rule found for '$IngredientName' ($StorageType, $ConditionType)."
