@@ -63,6 +63,65 @@ function clampScore(value) {
   return Math.round(Math.min(100, Math.max(0, n)) * 100) / 100;
 }
 
+const COLD_INGREDIENT_WEIGHT = 0.9;
+const ROOM_INGREDIENT_WEIGHT = 0.15;
+const PANTRY_STAPLE_WEIGHT = 0.12;
+const PANTRY_STAPLE_KEY_HINTS = [
+  "salt",
+  "sugar",
+  "pepper",
+  "soy_sauce",
+  "vinegar",
+  "oil",
+  "flour",
+  "starch",
+  "sesame_oil",
+  "olive_oil",
+  "fish_sauce",
+  "miso",
+  "gochujang",
+  "doenjang"
+];
+
+function normalizeStorageTypeForScore(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "room" || raw === "ambient" || raw === "pantry") {
+    return "room";
+  }
+  if (raw === "frozen" || raw === "freezer") {
+    return "frozen";
+  }
+  return "refrigerated";
+}
+
+function isPantryStapleKey(ingredientKey) {
+  const key = normalizeIngredientKey(String(ingredientKey || ""));
+  if (!key) {
+    return false;
+  }
+  for (const hint of PANTRY_STAPLE_KEY_HINTS) {
+    if (key === hint || key.includes(hint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getIngredientWeight(ingredientKey, inventoryMap) {
+  const entry = inventoryMap instanceof Map ? inventoryMap.get(ingredientKey) : null;
+  const roomQty = Number(entry?.room_quantity || 0);
+  const coldQty = Number(entry?.cold_quantity || 0);
+
+  let weight = COLD_INGREDIENT_WEIGHT;
+  if (roomQty > 0 && coldQty <= 0) {
+    weight = ROOM_INGREDIENT_WEIGHT;
+  }
+  if (isPantryStapleKey(ingredientKey)) {
+    weight = Math.min(weight, PANTRY_STAPLE_WEIGHT);
+  }
+  return Math.max(0.05, Math.min(1, weight));
+}
+
 function resolveLiveRecipeIngredientExtractorConfig(env) {
   const apiKey = safeString(env?.OPENAI_API_KEY, "");
   const enabledRaw = safeString(env?.OPENAI_ENABLE_LIVE_RECIPE_INGREDIENT_EXTRACTOR, "").toLowerCase();
@@ -194,9 +253,15 @@ function buildInventoryTerms(inventoryItems, lang, maxTerms = 4, koNameByKey = n
     const qty = Number(item?.quantity || 0);
     const status = String(item?.status || "").trim().toLowerCase();
     const urgency = status === "expiring_soon" ? 2 : status === "fresh" ? 1 : 0;
+    const ingredientKey = normalizeIngredientKey(String(item?.ingredient_key || item?.ingredient_name || term).trim());
+    const storageType = normalizeStorageTypeForScore(item?.storage_type);
+    const storageWeight = storageType === "room" ? ROOM_INGREDIENT_WEIGHT : COLD_INGREDIENT_WEIGHT;
+    const stapleWeight = isPantryStapleKey(ingredientKey) ? PANTRY_STAPLE_WEIGHT : 1;
+    const weightedQty = (Number.isFinite(qty) ? qty : 0) * storageWeight * stapleWeight;
+    const weightedUrgency = urgency * (storageType === "room" ? 0.25 : 1);
     scored.push({
       term,
-      score: (Number.isFinite(qty) ? qty : 0) + urgency
+      score: weightedQty + weightedUrgency
     });
   }
 
@@ -858,6 +923,7 @@ function buildInventoryAvailabilityMap(inventoryItems) {
       continue;
     }
     const status = String(item?.status || "fresh").trim().toLowerCase();
+    const storageType = normalizeStorageTypeForScore(item?.storage_type);
     if (status === "expired") {
       continue;
     }
@@ -866,12 +932,25 @@ function buildInventoryAvailabilityMap(inventoryItems) {
       map.set(key, {
         ingredient_key: key,
         total_quantity: 0,
-        expiring_soon_quantity: 0
+        expiring_soon_quantity: 0,
+        refrigerated_quantity: 0,
+        frozen_quantity: 0,
+        room_quantity: 0,
+        cold_quantity: 0
       });
     }
 
     const entry = map.get(key);
     entry.total_quantity = Math.round((Number(entry.total_quantity || 0) + qty) * 100) / 100;
+    if (storageType === "room") {
+      entry.room_quantity = Math.round((Number(entry.room_quantity || 0) + qty) * 100) / 100;
+    } else if (storageType === "frozen") {
+      entry.frozen_quantity = Math.round((Number(entry.frozen_quantity || 0) + qty) * 100) / 100;
+      entry.cold_quantity = Math.round((Number(entry.cold_quantity || 0) + qty) * 100) / 100;
+    } else {
+      entry.refrigerated_quantity = Math.round((Number(entry.refrigerated_quantity || 0) + qty) * 100) / 100;
+      entry.cold_quantity = Math.round((Number(entry.cold_quantity || 0) + qty) * 100) / 100;
+    }
     if (status === "expiring_soon") {
       entry.expiring_soon_quantity = Math.round((Number(entry.expiring_soon_quantity || 0) + qty) * 100) / 100;
     }
@@ -994,16 +1073,25 @@ function computeInventoryAwareLiveScore(item, requiredKeys, inventoryMap) {
   const matched = [];
   const missing = [];
   let expiringSoonUsedCount = 0;
+  let matchedWeight = 0;
+  let missingWeight = 0;
+  let expiringSoonWeight = 0;
+  let totalRequiredWeight = 0;
 
   for (const key of required) {
+    const ingredientWeight = getIngredientWeight(key, inventoryMap);
+    totalRequiredWeight += ingredientWeight;
     const entry = inventoryMap.get(key);
     if (entry && Number(entry.total_quantity || 0) > 0) {
       matched.push(key);
+      matchedWeight += ingredientWeight;
       if (Number(entry.expiring_soon_quantity || 0) > 0) {
         expiringSoonUsedCount += 1;
+        expiringSoonWeight += ingredientWeight;
       }
     } else {
       missing.push(key);
+      missingWeight += ingredientWeight;
     }
   }
 
@@ -1011,14 +1099,14 @@ function computeInventoryAwareLiveScore(item, requiredKeys, inventoryMap) {
   const matchedCount = matched.length;
   const missingCount = missing.length;
   const ratioFallback = Math.min(1, Math.max(0, Number(item?.text_match_ratio || item?.match_ratio || 0)));
-  const matchRatio = requiredCount > 0 ? matchedCount / requiredCount : ratioFallback;
+  const matchRatio = totalRequiredWeight > 0 ? matchedWeight / totalRequiredWeight : requiredCount > 0 ? matchedCount / requiredCount : ratioFallback;
   const canMakeNow = requiredCount > 0 ? missingCount === 0 : false;
 
   const coverage = matchRatio * 72;
   const readinessBonus = canMakeNow ? 16 : 0;
-  const expiringBonus = Math.min(8, expiringSoonUsedCount * 2);
+  const expiringBonus = Math.min(8, expiringSoonWeight * 2.5);
   const providerBonus = getProviderQualityBoost(item?.source_provider || item?.source_type || "");
-  const missingPenalty = requiredCount > 0 ? Math.min(28, missingCount * 4) : 0;
+  const missingPenalty = requiredCount > 0 ? Math.min(28, missingWeight * 4.5) : 0;
   const textFallback = requiredCount === 0 ? Math.min(10, Number(item?.text_term_hits || 0) * 2) : 0;
   const score = clampScore(coverage + readinessBonus + expiringBonus + providerBonus + textFallback - missingPenalty);
 

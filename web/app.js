@@ -18,6 +18,10 @@ let realtimeRecentSpeechTexts = [];
 let realtimeLastVisionRelabelAt = 0;
 let realtimeLastVisionTargetObjectId = "";
 let realtimeLastVisionTargetAt = 0;
+let realtimePendingInventoryText = "";
+let realtimePendingInventoryAt = 0;
+let realtimeLastAutoIngestKey = "";
+let realtimeLastAutoIngestAt = 0;
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
@@ -218,6 +222,8 @@ const I18N = {
     voice_draft_edit_hint: "Say the new name, or say \"delete\" to remove it.",
     voice_ack_applied: "Okay, applied.",
     voice_ack_target_selected: "Spot {index} selected. Say the new name.",
+    voice_wait_more: "Okay, keep speaking.",
+    voice_already_applied: "Already applied. No duplicate update.",
     voice_draft_update_failed: "Draft update failed: {msg}",
     voice_inventory_updated: "Inventory updated: {summary}",
     voice_inventory_no_items: "I couldn't find any food items in that message.",
@@ -1321,6 +1327,50 @@ function stripLeadingSpeechFiller(rawText) {
     ""
   );
   return text.trim();
+}
+
+function normalizeVoiceIngestKey(rawText) {
+  return String(rawText || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isVoiceConnectorOnlyText(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return true;
+  }
+  return /^(?:그리고|그다음|다음|또|그리고요|그리고는|상온\s*재료(?:에는|는)?|냉장\s*재료(?:에는|는)?|냉동\s*재료(?:에는|는)?|재료(?:에는|는)?)$/u.test(
+    text
+  );
+}
+
+function isLikelyFragmentaryInventoryText(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return true;
+  }
+  if (isVoiceConnectorOnlyText(text)) {
+    return true;
+  }
+
+  if (/(?:이랑|랑|하고|와|과|및|그리고|에는|에서|부터|도|만)\s*$/u.test(text)) {
+    return true;
+  }
+
+  const hasCommandVerb =
+    /(?:있어|있어요|있습니다|추가|넣|빼|먹|삭제|소비|수량|유통기한|아니라|아니고|말고|변경|수정|해줘|해주세요)\s*[.!?~]*$/u.test(text);
+  if (!hasCommandVerb && text.length <= 16) {
+    return true;
+  }
+  return false;
+}
+
+function clearRealtimePendingInventoryText() {
+  realtimePendingInventoryText = "";
+  realtimePendingInventoryAt = 0;
 }
 
 function parseQuantityOnlyIntent(rawText) {
@@ -3421,6 +3471,9 @@ function stopRealtimeVoice() {
   realtimeLastVisionRelabelAt = 0;
   realtimeLastVisionTargetObjectId = "";
   realtimeLastVisionTargetAt = 0;
+  clearRealtimePendingInventoryText();
+  realtimeLastAutoIngestKey = "";
+  realtimeLastAutoIngestAt = 0;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -3738,7 +3791,40 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     return;
   }
 
+  let autoIngestText = text;
+  if (isEasyMode() && !hasOpenCaptureSession) {
+    if (realtimePendingInventoryText && now - Number(realtimePendingInventoryAt || 0) > 25000) {
+      clearRealtimePendingInventoryText();
+    }
+
+    if (isLikelyFragmentaryInventoryText(text)) {
+      const merged = normalizeWhitespace(`${realtimePendingInventoryText || ""} ${text}`.trim());
+      realtimePendingInventoryText = merged || text;
+      realtimePendingInventoryAt = now;
+      appendVoiceAck(t("voice_wait_more"));
+      return;
+    }
+
+    if (realtimePendingInventoryText) {
+      autoIngestText = normalizeWhitespace(`${realtimePendingInventoryText} ${text}`.trim());
+      clearRealtimePendingInventoryText();
+      if (autoIngestText && autoIngestText !== text) {
+        appendRealtimeLogLine("me(merged)", autoIngestText);
+      }
+    }
+
+    const ingestKey = normalizeVoiceIngestKey(autoIngestText);
+    if (ingestKey && ingestKey === realtimeLastAutoIngestKey && now - Number(realtimeLastAutoIngestAt || 0) < 20000) {
+      appendRealtimeLogLine("system", t("voice_already_applied"));
+      appendVoiceAck(t("voice_already_applied"));
+      return;
+    }
+    realtimeLastAutoIngestKey = ingestKey;
+    realtimeLastAutoIngestAt = now;
+  }
+
   if (hasOpenCaptureSession) {
+    clearRealtimePendingInventoryText();
     realtimeIngestChain = realtimeIngestChain
       .then(() =>
         sendCaptureMessagePayload({
@@ -3765,25 +3851,25 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
 
   if (isEasyMode()) {
     realtimeIngestChain = realtimeIngestChain
-      .then(() => ingestInventoryFromText(text, sourceType))
+      .then(() => ingestInventoryFromText(autoIngestText, sourceType))
       .then(async (res) => {
         let data = res?.data || null;
         let summary = data ? formatInventoryIngestSummary(data) : "";
 
         // Multi-turn repair: if this turn has no parsed food action, retry with previous speech context.
-        if (!summary && recentContext.length > 0 && !suppressContextRepair) {
+        if (!summary && recentContext.length > 0 && !suppressContextRepair && !/^(?:realtime_voice|browser_speech)$/i.test(sourceType)) {
           const candidates = [];
           const prev1 = String(recentContext[recentContext.length - 1] || "").trim();
           const prev2 = String(recentContext[recentContext.length - 2] || "").trim();
           if (prev1) {
-            candidates.push(`${prev1} ${text}`.trim());
+            candidates.push(`${prev1} ${autoIngestText}`.trim());
           }
           if (prev2 && prev1) {
-            candidates.push(`${prev2} ${prev1} ${text}`.trim());
+            candidates.push(`${prev2} ${prev1} ${autoIngestText}`.trim());
           }
 
           for (const candidate of candidates) {
-            if (!candidate || candidate === text) {
+            if (!candidate || candidate === autoIngestText) {
               continue;
             }
             const retry = await ingestInventoryFromText(candidate, `${sourceType}_context`);

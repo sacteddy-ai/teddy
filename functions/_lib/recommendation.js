@@ -5,6 +5,26 @@ import { normalizeIngredientKey, clampNumber, parseDateOrDateTimeToEpochDay, tod
 let recipeCache = null;
 let baselineCache = null;
 
+const COLD_INGREDIENT_WEIGHT = 0.9;
+const ROOM_INGREDIENT_WEIGHT = 0.15;
+const PANTRY_STAPLE_WEIGHT = 0.12;
+const PANTRY_STAPLE_KEY_HINTS = [
+  "salt",
+  "sugar",
+  "pepper",
+  "soy_sauce",
+  "vinegar",
+  "oil",
+  "flour",
+  "starch",
+  "sesame_oil",
+  "olive_oil",
+  "fish_sauce",
+  "miso",
+  "gochujang",
+  "doenjang"
+];
+
 function normalizeLang(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "ko" || raw === "en") {
@@ -96,12 +116,52 @@ function getIngredientKeyFromInventoryItem(item) {
   return "unknown";
 }
 
+function normalizeStorageTypeForScore(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "room" || raw === "ambient" || raw === "pantry") {
+    return "room";
+  }
+  if (raw === "frozen" || raw === "freezer") {
+    return "frozen";
+  }
+  return "refrigerated";
+}
+
+function isPantryStapleKey(ingredientKey) {
+  const key = normalizeIngredientKey(String(ingredientKey || ""));
+  if (!key) {
+    return false;
+  }
+  for (const hint of PANTRY_STAPLE_KEY_HINTS) {
+    if (key === hint || key.includes(hint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getIngredientWeight(ingredientKey, inventoryMap) {
+  const entry = inventoryMap instanceof Map ? inventoryMap.get(ingredientKey) : null;
+  const roomQty = Number(entry?.room_quantity || 0);
+  const coldQty = Number(entry?.cold_quantity || 0);
+
+  let weight = COLD_INGREDIENT_WEIGHT;
+  if (roomQty > 0 && coldQty <= 0) {
+    weight = ROOM_INGREDIENT_WEIGHT;
+  }
+  if (isPantryStapleKey(ingredientKey)) {
+    weight = Math.min(weight, PANTRY_STAPLE_WEIGHT);
+  }
+  return Math.max(0.05, Math.min(1, weight));
+}
+
 function buildInventoryMap(inventoryItems) {
   const map = new Map();
   for (const item of inventoryItems || []) {
     const key = getIngredientKeyFromInventoryItem(item);
     const quantity = clampNumber(item?.quantity, 0, 0, null);
     const status = String(item?.status || "fresh");
+    const storageType = normalizeStorageTypeForScore(item?.storage_type);
 
     if (!map.has(key)) {
       map.set(key, {
@@ -109,11 +169,25 @@ function buildInventoryMap(inventoryItems) {
         total_quantity: 0,
         has_fresh_or_soon: false,
         has_expired: false,
-        expiring_soon_quantity: 0
+        expiring_soon_quantity: 0,
+        refrigerated_quantity: 0,
+        frozen_quantity: 0,
+        room_quantity: 0,
+        cold_quantity: 0
       });
     }
     const entry = map.get(key);
     entry.total_quantity += quantity;
+
+    if (storageType === "room") {
+      entry.room_quantity += quantity;
+    } else if (storageType === "frozen") {
+      entry.frozen_quantity += quantity;
+      entry.cold_quantity += quantity;
+    } else {
+      entry.refrigerated_quantity += quantity;
+      entry.cold_quantity += quantity;
+    }
 
     if (status === "expired") {
       entry.has_expired = true;
@@ -281,28 +355,37 @@ export async function getRecipeRecommendations(context, inventoryItems, topN = 1
     const matched = [];
     const missing = [];
     let expiringSoonUsedCount = 0;
+    let matchedWeight = 0;
+    let missingWeight = 0;
+    let expiringSoonWeight = 0;
+    let totalRequiredWeight = 0;
 
     for (const requiredKey of required) {
+      const ingredientWeight = getIngredientWeight(requiredKey, inventoryMap);
+      totalRequiredWeight += ingredientWeight;
       const entry = inventoryMap.get(requiredKey);
       if (entry && entry.has_fresh_or_soon && entry.total_quantity > 0) {
         matched.push(requiredKey);
+        matchedWeight += ingredientWeight;
         if (entry.expiring_soon_quantity > 0) {
           expiringSoonUsedCount += 1;
+          expiringSoonWeight += ingredientWeight;
         }
       } else {
         missing.push(requiredKey);
+        missingWeight += ingredientWeight;
       }
     }
 
     const requiredCount = required.length;
     const matchedCount = matched.length;
     const missingCount = missing.length;
-    const matchRatio = requiredCount === 0 ? 0 : matchedCount / requiredCount;
+    const matchRatio = totalRequiredWeight > 0 ? matchedWeight / totalRequiredWeight : requiredCount === 0 ? 0 : matchedCount / requiredCount;
     const canMakeNow = missingCount === 0;
 
     const scoreBase = Math.round(matchRatio * 100 * 100) / 100;
-    const urgencyBoost = expiringSoonUsedCount * 5;
-    const missingPenalty = missingCount * 8;
+    const urgencyBoost = Math.round(expiringSoonWeight * 5 * 100) / 100;
+    const missingPenalty = Math.round(missingWeight * 8 * 100) / 100;
     const completionBonus = canMakeNow ? 20 : 0;
     const score = Math.round((scoreBase + urgencyBoost + completionBonus - missingPenalty) * 100) / 100;
 
