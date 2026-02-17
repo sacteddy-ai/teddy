@@ -67,6 +67,7 @@ let shoppingItemsCache = [];
 let shoppingAutoOnly = false;
 const NOTIFICATION_DAY_PRESETS = [14, 7, 3, 1, 0];
 let notificationDayOffsets = [3, 1, 0];
+let notificationCustomDayPresets = [];
 let notificationDayBounds = { min: 0, max: 60 };
 
 const I18N = {
@@ -178,6 +179,10 @@ const I18N = {
     btn_add_day: "Add Day",
     btn_save_notification_prefs: "Save Alert Rule",
     notifications_pref_current: "Current alert days: {days}",
+    btn_edit_day: "Edit",
+    btn_delete_day: "Delete",
+    prompt_notification_edit_day: "Change day value (current: {day})",
+    err_notification_day_range: "Day must be between {min} and {max}.",
     expiring_focus_title: "Expiring Items (All Storage)",
     expiring_focus_desc: "Shows items nearing expiration across refrigerated/frozen/room.",
     btn_consume_1: "Consume 1",
@@ -5258,6 +5263,34 @@ function normalizeNotificationDayOffsets(value, fallback = [3, 1, 0], min = 0, m
   return [...fallback];
 }
 
+function isBuiltInNotificationDay(dayOffset) {
+  const n = Math.round(Number(dayOffset) || 0);
+  return NOTIFICATION_DAY_PRESETS.includes(n);
+}
+
+function normalizeNotificationCustomDayPresets(value, min = 0, max = 60) {
+  const base = normalizeNotificationDayOffsets(value, [], min, max);
+  return base.filter((d) => !isBuiltInNotificationDay(d));
+}
+
+function parseNotificationDayValue(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  if (n < notificationDayBounds.min || n > notificationDayBounds.max) {
+    return null;
+  }
+  return n;
+}
+
+function notificationDayRangeError() {
+  return tf("err_notification_day_range", {
+    min: notificationDayBounds.min,
+    max: notificationDayBounds.max
+  });
+}
+
 function formatNotificationDayToken(dayOffset) {
   const n = Math.max(0, Math.round(Number(dayOffset) || 0));
   if (n <= 0) {
@@ -5285,7 +5318,11 @@ function renderNotificationLeadButtons() {
     return;
   }
 
-  const merged = new Set([...(NOTIFICATION_DAY_PRESETS || []), ...(notificationDayOffsets || [])]);
+  const merged = new Set([
+    ...(NOTIFICATION_DAY_PRESETS || []),
+    ...(notificationCustomDayPresets || []),
+    ...(notificationDayOffsets || [])
+  ]);
   const sorted = Array.from(merged)
     .filter((n) => Number.isFinite(n))
     .map((n) => Math.round(n))
@@ -5293,15 +5330,39 @@ function renderNotificationLeadButtons() {
 
   root.innerHTML = "";
   sorted.forEach((day) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn tiny ghost";
+    const chip = document.createElement("div");
+    chip.className = "notification-day-chip";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn tiny ghost";
     if (notificationDayOffsets.includes(day)) {
-      btn.classList.add("active");
+      toggleBtn.classList.add("active");
     }
-    btn.dataset.dayOffset = String(day);
-    btn.textContent = formatNotificationDayToken(day);
-    root.appendChild(btn);
+    toggleBtn.dataset.dayOffset = String(day);
+    toggleBtn.dataset.dayAction = "toggle";
+    toggleBtn.textContent = formatNotificationDayToken(day);
+    chip.appendChild(toggleBtn);
+
+    if (notificationCustomDayPresets.includes(day)) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn tiny ghost notification-day-action";
+      editBtn.dataset.dayOffset = String(day);
+      editBtn.dataset.dayAction = "edit_custom";
+      editBtn.textContent = t("btn_edit_day");
+      chip.appendChild(editBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn tiny ghost notification-day-action";
+      delBtn.dataset.dayOffset = String(day);
+      delBtn.dataset.dayAction = "remove_custom";
+      delBtn.textContent = t("btn_delete_day");
+      chip.appendChild(delBtn);
+    }
+
+    root.appendChild(chip);
   });
 
   const input = $("notificationLeadInput");
@@ -5314,8 +5375,8 @@ function renderNotificationLeadButtons() {
 }
 
 function toggleNotificationLeadDay(dayOffset) {
-  const day = Math.round(Number(dayOffset));
-  if (!Number.isFinite(day)) {
+  const day = parseNotificationDayValue(dayOffset);
+  if (day === null) {
     return;
   }
   const next = new Set(notificationDayOffsets || []);
@@ -5333,6 +5394,72 @@ function toggleNotificationLeadDay(dayOffset) {
   renderNotificationLeadButtons();
 }
 
+function removeCustomNotificationLeadDay(dayOffset) {
+  const day = parseNotificationDayValue(dayOffset);
+  if (day === null) {
+    return;
+  }
+  if (!notificationCustomDayPresets.includes(day)) {
+    return;
+  }
+
+  notificationCustomDayPresets = notificationCustomDayPresets.filter((d) => d !== day);
+  if (notificationDayOffsets.includes(day)) {
+    const next = notificationDayOffsets.filter((d) => d !== day);
+    if (!next.length) {
+      setGlobalError(t("err_notification_no_offsets"));
+      notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
+        [...notificationCustomDayPresets, day],
+        notificationDayBounds.min,
+        notificationDayBounds.max
+      );
+      return;
+    }
+    notificationDayOffsets = normalizeNotificationDayOffsets(next, [], notificationDayBounds.min, notificationDayBounds.max);
+  }
+  renderNotificationLeadButtons();
+}
+
+function editCustomNotificationLeadDay(dayOffset) {
+  const day = parseNotificationDayValue(dayOffset);
+  if (day === null) {
+    return;
+  }
+  if (!notificationCustomDayPresets.includes(day)) {
+    return;
+  }
+
+  const raw = window.prompt(tf("prompt_notification_edit_day", { day }), String(day));
+  if (raw === null) {
+    return;
+  }
+  const nextDay = parseNotificationDayValue(raw);
+  if (nextDay === null) {
+    setGlobalError(notificationDayRangeError());
+    return;
+  }
+  if (nextDay === day) {
+    return;
+  }
+
+  notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
+    [...notificationCustomDayPresets.filter((d) => d !== day), nextDay],
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+
+  if (notificationDayOffsets.includes(day)) {
+    notificationDayOffsets = normalizeNotificationDayOffsets(
+      [...notificationDayOffsets.filter((d) => d !== day), nextDay],
+      [],
+      notificationDayBounds.min,
+      notificationDayBounds.max
+    );
+  }
+
+  renderNotificationLeadButtons();
+}
+
 function addNotificationLeadDayFromInput() {
   const input = $("notificationLeadInput");
   if (!input) {
@@ -5343,10 +5470,18 @@ function addNotificationLeadDayFromInput() {
     return;
   }
 
-  const n = Math.round(Number(raw));
-  if (!Number.isFinite(n) || n < notificationDayBounds.min || n > notificationDayBounds.max) {
-    setGlobalError(`Day must be between ${notificationDayBounds.min} and ${notificationDayBounds.max}.`);
+  const n = parseNotificationDayValue(raw);
+  if (n === null) {
+    setGlobalError(notificationDayRangeError());
     return;
+  }
+
+  if (!isBuiltInNotificationDay(n) && !notificationCustomDayPresets.includes(n)) {
+    notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
+      [...notificationCustomDayPresets, n],
+      notificationDayBounds.min,
+      notificationDayBounds.max
+    );
   }
 
   if (!notificationDayOffsets.includes(n)) {
@@ -5378,6 +5513,20 @@ async function loadNotificationPreferences() {
     notificationDayBounds.min,
     notificationDayBounds.max
   );
+  const customFromServer = normalizeNotificationCustomDayPresets(
+    data?.custom_day_presets,
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+  if (customFromServer.length > 0) {
+    notificationCustomDayPresets = customFromServer;
+  } else {
+    notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
+      notificationDayOffsets,
+      notificationDayBounds.min,
+      notificationDayBounds.max
+    );
+  }
   renderNotificationLeadButtons();
 }
 
@@ -5398,6 +5547,11 @@ async function saveNotificationPreferences() {
     body: JSON.stringify({
       user_id: userId,
       day_offsets: dayOffsets,
+      custom_day_presets: normalizeNotificationCustomDayPresets(
+        notificationCustomDayPresets,
+        notificationDayBounds.min,
+        notificationDayBounds.max
+      ),
       apply_to_existing: true
     })
   });
@@ -5406,6 +5560,11 @@ async function saveNotificationPreferences() {
   notificationDayOffsets = normalizeNotificationDayOffsets(
     data?.day_offsets,
     dayOffsets,
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+  notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
+    data?.custom_day_presets,
     notificationDayBounds.min,
     notificationDayBounds.max
   );
@@ -6126,11 +6285,22 @@ function bindEvents() {
   $("reloadNotificationsBtn").addEventListener("click", reloadNotificationsPanel);
   if ($("notificationLeadButtons")) {
     $("notificationLeadButtons").addEventListener("click", (event) => {
-      const btn = event?.target?.closest?.("button[data-day-offset]");
+      const btn = event?.target?.closest?.("button[data-day-offset][data-day-action]");
       if (!btn) {
         return;
       }
-      toggleNotificationLeadDay(btn.dataset.dayOffset);
+      const action = String(btn.dataset.dayAction || "").trim();
+      if (action === "toggle") {
+        toggleNotificationLeadDay(btn.dataset.dayOffset);
+        return;
+      }
+      if (action === "remove_custom") {
+        removeCustomNotificationLeadDay(btn.dataset.dayOffset);
+        return;
+      }
+      if (action === "edit_custom") {
+        editCustomNotificationLeadDay(btn.dataset.dayOffset);
+      }
     });
   }
   if ($("notificationLeadAddBtn")) {

@@ -27,7 +27,25 @@ export function sanitizeNotificationDayOffsets(value, fallback = DEFAULT_NOTIFIC
   if (normalized.length > 0) {
     return normalized;
   }
-  return [...DEFAULT_NOTIFICATION_DAY_OFFSETS];
+
+  const fallbackRaw = Array.isArray(fallback) ? fallback : DEFAULT_NOTIFICATION_DAY_OFFSETS;
+  const fallbackUnique = new Set();
+  for (const entry of fallbackRaw || []) {
+    const n = Number(entry);
+    if (!Number.isFinite(n)) {
+      continue;
+    }
+    const day = Math.round(n);
+    if (day < MIN_NOTIFICATION_DAY_OFFSET || day > MAX_NOTIFICATION_DAY_OFFSET) {
+      continue;
+    }
+    fallbackUnique.add(day);
+  }
+  const fallbackNormalized = Array.from(fallbackUnique).sort((a, b) => b - a);
+  if (fallbackNormalized.length > 0) {
+    return fallbackNormalized;
+  }
+  return [];
 }
 
 export function notifyTypeFromDayOffset(dayOffset) {

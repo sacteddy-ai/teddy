@@ -424,10 +424,22 @@ textarea {
 
 .notification-lead-buttons {
   margin: 8px 0 6px;
+  align-items: center;
+}
+
+.notification-day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .notification-lead-buttons .btn {
   min-width: 64px;
+}
+
+.notification-day-chip .notification-day-action {
+  min-width: 42px;
+  padding: 5px 8px;
 }
 
 .notification-pref-fields {

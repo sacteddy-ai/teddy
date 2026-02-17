@@ -43,8 +43,11 @@ function normalizeBoolean(value, fallback = false) {
 
 function buildPreferenceResponse(pref) {
   const dayOffsets = sanitizeNotificationDayOffsets(pref?.day_offsets, DEFAULT_NOTIFICATION_DAY_OFFSETS);
+  const customDayPresetsRaw = sanitizeNotificationDayOffsets(pref?.custom_day_presets, []);
+  const customDayPresets = customDayPresetsRaw.filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d));
   return {
     day_offsets: dayOffsets,
+    custom_day_presets: customDayPresets,
     updated_at: pref?.updated_at || null,
     default_day_offsets: [...DEFAULT_NOTIFICATION_DAY_OFFSETS],
     min_day_offset: MIN_NOTIFICATION_DAY_OFFSET,
@@ -75,11 +78,17 @@ export async function onRequest(context) {
     const payload = await readJsonOptional(context.request);
     const userId = normalizeUserId(payload?.user_id);
     const dayOffsets = sanitizeNotificationDayOffsets(payload?.day_offsets, DEFAULT_NOTIFICATION_DAY_OFFSETS);
+    const customDayPresetsInput = sanitizeNotificationDayOffsets(payload?.custom_day_presets, []);
+    const customFromSelected = dayOffsets.filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d));
+    const customDayPresets = Array.from(new Set([...(customDayPresetsInput || []), ...(customFromSelected || [])]))
+      .filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d))
+      .sort((a, b) => b - a);
     const applyToExisting = normalizeBoolean(payload?.apply_to_existing, true);
     const updatedAt = nowIso();
 
     await putObject(context.env, notificationPreferencesKey(userId), {
       day_offsets: dayOffsets,
+      custom_day_presets: customDayPresets,
       updated_at: updatedAt
     });
 
@@ -113,7 +122,7 @@ export async function onRequest(context) {
 
     return jsonResponse(context, {
       data: {
-        ...buildPreferenceResponse({ day_offsets: dayOffsets, updated_at: updatedAt }),
+        ...buildPreferenceResponse({ day_offsets: dayOffsets, custom_day_presets: customDayPresets, updated_at: updatedAt }),
         apply_to_existing: applyToExisting,
         affected_inventory_items: affectedInventoryItems,
         regenerated_notifications: regeneratedNotifications
