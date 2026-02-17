@@ -1,8 +1,8 @@
 import { getExpirationSuggestion, getItemStatus } from "./expiration.js";
 import { appendInventoryUsageEvents } from "./inventory_usage.js";
-import { newExpirationNotifications } from "./notifications.js";
+import { newExpirationNotifications, sanitizeNotificationDayOffsets } from "./notifications.js";
 import { nowIso, parseIsoDateToEpochDay, todayEpochDay, epochDayToIso, normalizeIngredientKey } from "./util.js";
-import { getArray, putArray, inventoryKey, notificationsKey } from "./store.js";
+import { getArray, getObject, putArray, inventoryKey, notificationsKey, notificationPreferencesKey } from "./store.js";
 
 function sameInventoryItemId(left, right) {
   return String(left ?? "").trim() === String(right ?? "").trim();
@@ -27,6 +27,12 @@ async function logUsageEventsBestEffort(context, userId, events) {
   } catch {
     // Usage tracking must not block inventory updates.
   }
+}
+
+async function getNotificationDayOffsetsForUser(context, userId) {
+  const prefsKey = notificationPreferencesKey(userId);
+  const prefs = await getObject(context.env, prefsKey);
+  return sanitizeNotificationDayOffsets(prefs?.day_offsets);
 }
 
 export async function createInventoryItemRecord(context, params) {
@@ -98,7 +104,13 @@ export async function createInventoryItemRecord(context, params) {
   items.push(newItem);
   await putArray(context.env, invKey, items);
 
-  const notifications = newExpirationNotifications(userId, itemId, suggestion.suggested_expiration_date);
+  const notificationDayOffsets = await getNotificationDayOffsetsForUser(context, userId);
+  const notifications = newExpirationNotifications(
+    userId,
+    itemId,
+    suggestion.suggested_expiration_date,
+    notificationDayOffsets
+  );
   const nKey = notificationsKey(userId);
   const existingNotifications = await getArray(context.env, nKey);
   existingNotifications.push(...notifications);
@@ -722,7 +734,10 @@ export async function updateInventoryByIngredientKey(context, userId, ingredient
   const notifications = await getArray(context.env, nKey);
   const baseNotifications = (notifications || []).filter((n) => n && String(n.inventory_item_id) !== targetId);
   if (updatedItem?.suggested_expiration_date) {
-    baseNotifications.push(...newExpirationNotifications(uid, targetId, updatedItem.suggested_expiration_date));
+    const notificationDayOffsets = await getNotificationDayOffsetsForUser(context, uid);
+    baseNotifications.push(
+      ...newExpirationNotifications(uid, targetId, updatedItem.suggested_expiration_date, notificationDayOffsets)
+    );
   }
   await putArray(context.env, nKey, baseNotifications);
 

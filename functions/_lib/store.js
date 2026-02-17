@@ -13,6 +13,10 @@ export function notificationsKey(userId) {
   return keyFor("notifications", userId);
 }
 
+export function notificationPreferencesKey(userId) {
+  return keyFor("notification_preferences", userId);
+}
+
 export function reviewQueueKey(userId) {
   return keyFor("ingredient_review_queue", userId);
 }

@@ -1,5 +1,24 @@
 import { jsonResponse, errorResponse, withOptionsCors } from "../../../_lib/http.js";
 import { getArray, putArray, inventoryKey, notificationsKey } from "../../../_lib/store.js";
+import { parseIsoDateToEpochDay, todayEpochDay } from "../../../_lib/util.js";
+import { parseDayOffsetFromNotifyType } from "../../../_lib/notifications.js";
+
+function toEpochDaySafe(value) {
+  const raw = String(value || "").trim().slice(0, 10);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return parseIsoDateToEpochDay(raw);
+  } catch {
+    return null;
+  }
+}
+
+function toDateMs(value) {
+  const d = new Date(String(value || ""));
+  return Number.isFinite(d.getTime()) ? d.getTime() : null;
+}
 
 export async function onRequest(context) {
   const method = context.request.method.toUpperCase();
@@ -42,10 +61,67 @@ export async function onRequest(context) {
       });
     }
 
+    items = [...items].sort((a, b) => {
+      const ams = toDateMs(a?.scheduled_at);
+      const bms = toDateMs(b?.scheduled_at);
+      if (ams === null && bms === null) {
+        return 0;
+      }
+      if (ams === null) {
+        return 1;
+      }
+      if (bms === null) {
+        return -1;
+      }
+      return ams - bms;
+    });
+
+    const invById = new Map();
+    for (const inv of inventoryItems || []) {
+      const id = String(inv?.id || "").trim();
+      if (id) {
+        invById.set(id, inv);
+      }
+    }
+
+    const today = todayEpochDay();
+    const enriched = items.map((n) => {
+      const itemId = String(n?.inventory_item_id || "").trim();
+      const inv = itemId ? invById.get(itemId) || null : null;
+      const expirationEpoch = toEpochDaySafe(inv?.suggested_expiration_date);
+      const daysUntilExpiration =
+        expirationEpoch === null || !Number.isFinite(today) ? null : Number(expirationEpoch) - Number(today);
+      const parsedOffset = parseDayOffsetFromNotifyType(n?.notify_type);
+      const dayOffsetRaw =
+        n?.days_before_expiration !== null && n?.days_before_expiration !== undefined
+          ? Number(n.days_before_expiration)
+          : parsedOffset;
+      const dayOffset = Number.isFinite(dayOffsetRaw) ? Math.max(0, Math.round(dayOffsetRaw)) : null;
+
+      return {
+        ...n,
+        days_before_expiration: dayOffset,
+        days_until_expiration: daysUntilExpiration,
+        item: inv
+          ? {
+              id: String(inv.id || ""),
+              ingredient_name: inv.ingredient_name || "",
+              ingredient_key: inv.ingredient_key || "",
+              storage_type: inv.storage_type || "",
+              suggested_expiration_date: inv.suggested_expiration_date || "",
+              status: inv.status || "",
+              days_remaining: inv.days_remaining ?? null,
+              quantity: inv.quantity ?? null,
+              unit: inv.unit || ""
+            }
+          : null
+      };
+    });
+
     return jsonResponse(context, {
       data: {
-        items,
-        count: items.length
+        items: enriched,
+        count: enriched.length
       }
     });
   } catch (err) {

@@ -422,6 +422,18 @@ textarea {
   flex-wrap: wrap;
 }
 
+.notification-lead-buttons {
+  margin: 8px 0 6px;
+}
+
+.notification-lead-buttons .btn {
+  min-width: 64px;
+}
+
+.notification-pref-fields {
+  margin-bottom: 6px;
+}
+
 .api-details {
   border: 1px dashed var(--line);
   border-radius: 14px;

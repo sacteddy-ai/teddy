@@ -65,6 +65,9 @@ let inventoryFilterStorage = "refrigerated";
 let inventorySelectedIds = new Set();
 let shoppingItemsCache = [];
 let shoppingAutoOnly = false;
+const NOTIFICATION_DAY_PRESETS = [14, 7, 3, 1, 0];
+let notificationDayOffsets = [3, 1, 0];
+let notificationDayBounds = { min: 0, max: 60 };
 
 const I18N = {
   en: {
@@ -170,6 +173,11 @@ const I18N = {
     btn_shopping_show_all: "Show All",
     btn_create_order_draft: "Create Order Draft",
     notifications_title: "Notifications",
+    notifications_pref_desc: "Choose how many days before expiration to alert.",
+    label_notification_day: "Day",
+    btn_add_day: "Add Day",
+    btn_save_notification_prefs: "Save Alert Rule",
+    notifications_pref_current: "Current alert days: {days}",
     expiring_focus_title: "Expiring Items (All Storage)",
     expiring_focus_desc: "Shows items nearing expiration across refrigerated/frozen/room.",
     btn_consume_1: "Consume 1",
@@ -191,6 +199,7 @@ const I18N = {
     empty_shopping: "No shopping suggestions.",
     empty_shopping_auto_only: "No auto-order candidates.",
     empty_notifications: "No notifications.",
+    err_notification_no_offsets: "Select at least one alert day.",
     empty_expiring_focus: "No expiring items right now.",
     empty_capture_none: "Start a capture session.",
     empty_capture_no_session: "No active capture session.",
@@ -244,8 +253,15 @@ const I18N = {
     meta_shopping_related: "related recipes: {related}",
     toast_order_draft_created: "Order draft created: {id} ({count} items)",
     err_order_draft_no_items: "No visible shopping items to draft.",
-    meta_notification_item: "item: {id}",
-    meta_notification_scheduled: "scheduled: {ts}",
+    meta_notification_type: "alert: {type}",
+    meta_notification_exp: "exp {exp} | {storage} | {due}",
+    meta_notification_scheduled_simple: "scheduled: {ts}",
+    notification_due_day: "D-day",
+    notification_due_minus: "D-{days}",
+    notification_due_expired: "expired {days}d ago",
+    notification_due_left: "{days}d left",
+    notification_unknown_item: "Unknown item",
+    toast_notification_prefs_saved: "Alert rule saved: {days} (rebuilt {count})",
     toast_run_due: "Sent {count} notification(s) at {ts}",
     toast_reload_catalog: "Reloaded {count} cache(s) at {ts}",
     badge_draft: "draft"
@@ -540,6 +556,7 @@ function setLang(lang) {
   syncShoppingFilterUI();
   updateQuickTalkButton();
   renderShoppingFromCache();
+  renderNotificationLeadButtons();
   renderVisionObjectPreview({ skipImageReload: true });
 }
 
@@ -4610,7 +4627,7 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
       applyInventoryMutationToCache(mutation, id);
     }
     renderInventoryFromCache();
-    await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
+    await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), reloadNotificationsPanel()]);
     clearInventorySelection();
   } finally {
     syncInventoryBulkBar();
@@ -4674,7 +4691,7 @@ function buildInventoryNode(item) {
       const mutation = await adjustInventoryItemQuantity(item.id, delta);
       applyInventoryMutationToCache(mutation, item.id);
       renderInventoryFromCache();
-      await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
+      await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), reloadNotificationsPanel()]);
     } catch (err) {
       setGlobalError(err.message);
     } finally {
@@ -5220,6 +5237,284 @@ async function createOrderDraftFromVisibleShopping() {
   }
 }
 
+function normalizeNotificationDayOffsets(value, fallback = [3, 1, 0], min = 0, max = 60) {
+  const src = Array.isArray(value) ? value : fallback;
+  const unique = new Set();
+  for (const raw of src || []) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      continue;
+    }
+    const day = Math.round(n);
+    if (day < Number(min) || day > Number(max)) {
+      continue;
+    }
+    unique.add(day);
+  }
+  const normalized = Array.from(unique).sort((a, b) => b - a);
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  return [...fallback];
+}
+
+function formatNotificationDayToken(dayOffset) {
+  const n = Math.max(0, Math.round(Number(dayOffset) || 0));
+  if (n <= 0) {
+    return t("notification_due_day");
+  }
+  return tf("notification_due_minus", { days: n });
+}
+
+function formatNotificationDaysList(dayOffsets) {
+  const arr = normalizeNotificationDayOffsets(dayOffsets, [3, 1, 0], notificationDayBounds.min, notificationDayBounds.max);
+  return arr.map((d) => formatNotificationDayToken(d)).join(", ");
+}
+
+function setNotificationPrefsMeta(message) {
+  const el = $("notificationPrefsMeta");
+  if (!el) {
+    return;
+  }
+  el.textContent = String(message || "");
+}
+
+function renderNotificationLeadButtons() {
+  const root = $("notificationLeadButtons");
+  if (!root) {
+    return;
+  }
+
+  const merged = new Set([...(NOTIFICATION_DAY_PRESETS || []), ...(notificationDayOffsets || [])]);
+  const sorted = Array.from(merged)
+    .filter((n) => Number.isFinite(n))
+    .map((n) => Math.round(n))
+    .sort((a, b) => b - a);
+
+  root.innerHTML = "";
+  sorted.forEach((day) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn tiny ghost";
+    if (notificationDayOffsets.includes(day)) {
+      btn.classList.add("active");
+    }
+    btn.dataset.dayOffset = String(day);
+    btn.textContent = formatNotificationDayToken(day);
+    root.appendChild(btn);
+  });
+
+  const input = $("notificationLeadInput");
+  if (input) {
+    input.min = String(notificationDayBounds.min);
+    input.max = String(notificationDayBounds.max);
+  }
+
+  setNotificationPrefsMeta(tf("notifications_pref_current", { days: formatNotificationDaysList(notificationDayOffsets) }));
+}
+
+function toggleNotificationLeadDay(dayOffset) {
+  const day = Math.round(Number(dayOffset));
+  if (!Number.isFinite(day)) {
+    return;
+  }
+  const next = new Set(notificationDayOffsets || []);
+  if (next.has(day)) {
+    next.delete(day);
+  } else {
+    next.add(day);
+  }
+  const normalized = normalizeNotificationDayOffsets(Array.from(next), [], notificationDayBounds.min, notificationDayBounds.max);
+  if (!normalized.length) {
+    setGlobalError(t("err_notification_no_offsets"));
+    return;
+  }
+  notificationDayOffsets = normalized;
+  renderNotificationLeadButtons();
+}
+
+function addNotificationLeadDayFromInput() {
+  const input = $("notificationLeadInput");
+  if (!input) {
+    return;
+  }
+  const raw = String(input.value || "").trim();
+  if (!raw) {
+    return;
+  }
+
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < notificationDayBounds.min || n > notificationDayBounds.max) {
+    setGlobalError(`Day must be between ${notificationDayBounds.min} and ${notificationDayBounds.max}.`);
+    return;
+  }
+
+  if (!notificationDayOffsets.includes(n)) {
+    notificationDayOffsets = normalizeNotificationDayOffsets(
+      [...notificationDayOffsets, n],
+      [3, 1, 0],
+      notificationDayBounds.min,
+      notificationDayBounds.max
+    );
+  }
+  input.value = "";
+  renderNotificationLeadButtons();
+}
+
+async function loadNotificationPreferences() {
+  const userId = getUserId();
+  const q = encodeQuery({ user_id: userId });
+  const result = await request(`/api/v1/notifications/preferences?${q}`, { method: "GET" });
+  const data = result?.data || {};
+  const min = Number(data?.min_day_offset);
+  const max = Number(data?.max_day_offset);
+  notificationDayBounds = {
+    min: Number.isFinite(min) ? Math.max(0, Math.round(min)) : 0,
+    max: Number.isFinite(max) ? Math.max(0, Math.round(max)) : 60
+  };
+  notificationDayOffsets = normalizeNotificationDayOffsets(
+    data?.day_offsets,
+    [3, 1, 0],
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+  renderNotificationLeadButtons();
+}
+
+async function saveNotificationPreferences() {
+  const dayOffsets = normalizeNotificationDayOffsets(
+    notificationDayOffsets,
+    [],
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+  if (!dayOffsets.length) {
+    throw new Error(t("err_notification_no_offsets"));
+  }
+
+  const userId = getUserId();
+  const result = await request("/api/v1/notifications/preferences", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      day_offsets: dayOffsets,
+      apply_to_existing: true
+    })
+  });
+
+  const data = result?.data || {};
+  notificationDayOffsets = normalizeNotificationDayOffsets(
+    data?.day_offsets,
+    dayOffsets,
+    notificationDayBounds.min,
+    notificationDayBounds.max
+  );
+  renderNotificationLeadButtons();
+  setNotificationPrefsMeta(
+    tf("toast_notification_prefs_saved", {
+      days: formatNotificationDaysList(notificationDayOffsets),
+      count: Number(data?.regenerated_notifications || 0)
+    })
+  );
+  await loadNotifications();
+}
+
+function parseNotifyTypeDayOffset(notifyType) {
+  const raw = String(notifyType || "").trim().toLowerCase();
+  if (!raw) {
+    return null;
+  }
+  if (raw === "d_day") {
+    return 0;
+  }
+  const m = /^d_minus_(\d+)$/.exec(raw);
+  if (!m) {
+    return null;
+  }
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return Math.round(n);
+}
+
+function formatNotificationTypeLabel(item) {
+  const fromField = Number(item?.days_before_expiration);
+  if (Number.isFinite(fromField)) {
+    return formatNotificationDayToken(fromField);
+  }
+  const fromType = parseNotifyTypeDayOffset(item?.notify_type || "");
+  if (Number.isFinite(fromType)) {
+    return formatNotificationDayToken(fromType);
+  }
+  return String(item?.notify_type || "-");
+}
+
+function formatNotificationDueLabel(daysUntilExpiration) {
+  const n = Number(daysUntilExpiration);
+  if (!Number.isFinite(n)) {
+    return t("word_none");
+  }
+  if (n < 0) {
+    return tf("notification_due_expired", { days: Math.abs(Math.round(n)) });
+  }
+  if (n === 0) {
+    return t("notification_due_day");
+  }
+  return tf("notification_due_left", { days: Math.round(n) });
+}
+
+function formatDateForDisplay(value, includeTime = false) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "-";
+  }
+
+  const input = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw;
+  const dt = new Date(input);
+  if (!Number.isFinite(dt.getTime())) {
+    return raw;
+  }
+
+  try {
+    const locale = currentLang === "ko" ? "ko-KR" : "en-US";
+    if (includeTime) {
+      return dt.toLocaleString(locale, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+    return dt.toLocaleDateString(locale, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  } catch {
+    if (includeTime) {
+      return dt.toISOString().replace("T", " ").slice(0, 16);
+    }
+    return dt.toISOString().slice(0, 10);
+  }
+}
+
+function resolveNotificationBadgeStatus(notification) {
+  const itemStatus = String(notification?.item?.status || "").trim().toLowerCase();
+  if (itemStatus === "expired") {
+    return "expired";
+  }
+  if (itemStatus === "expiring_soon") {
+    return "expiring_soon";
+  }
+  const days = Number(notification?.days_until_expiration);
+  if (Number.isFinite(days) && days < 0) {
+    return "expired";
+  }
+  return notification?.status === "pending" ? "expiring_soon" : "fresh";
+}
+
 function renderNotifications(items) {
   const list = $("notificationList");
   list.innerHTML = "";
@@ -5229,27 +5524,72 @@ function renderNotifications(items) {
   }
 
   items.forEach((n) => {
+    const item = n?.item || null;
+    const ingredientName = item
+      ? ingredientLabel(item?.ingredient_key || "", item?.ingredient_name || "")
+      : t("notification_unknown_item");
+    const storage = item ? storageLabel(item?.storage_type || "") : t("word_none");
+    const expDate = item?.suggested_expiration_date ? formatDateForDisplay(item.suggested_expiration_date) : "-";
+    const due = formatNotificationDueLabel(n?.days_until_expiration);
+    const ruleLabel = formatNotificationTypeLabel(n);
+    const scheduled = formatDateForDisplay(n?.scheduled_at, true);
+
     const node = document.createElement("div");
     node.className = "item";
-    node.innerHTML = `
-      <div class="item-main">
-        <strong class="name">${n.notify_type}</strong>
-        <span class="meta">${tf("meta_notification_item", { id: n.inventory_item_id })}</span>
-        <span class="meta">${tf("meta_notification_scheduled", { ts: n.scheduled_at })}</span>
-      </div>
-      <div class="item-side"></div>
-    `;
-    node.querySelector(".item-side").appendChild(statusBadge(n.status === "pending" ? "expiring_soon" : "fresh"));
+
+    const main = document.createElement("div");
+    main.className = "item-main";
+
+    const nameEl = document.createElement("strong");
+    nameEl.className = "name";
+    nameEl.textContent = ingredientName || t("notification_unknown_item");
+
+    const typeMeta = document.createElement("span");
+    typeMeta.className = "meta";
+    typeMeta.textContent = tf("meta_notification_type", { type: ruleLabel });
+
+    const expMeta = document.createElement("span");
+    expMeta.className = "meta";
+    expMeta.textContent = tf("meta_notification_exp", {
+      exp: expDate,
+      storage,
+      due
+    });
+
+    const scheduleMeta = document.createElement("span");
+    scheduleMeta.className = "meta";
+    scheduleMeta.textContent = tf("meta_notification_scheduled_simple", { ts: scheduled });
+
+    main.appendChild(nameEl);
+    main.appendChild(typeMeta);
+    main.appendChild(expMeta);
+    main.appendChild(scheduleMeta);
+
+    const side = document.createElement("div");
+    side.className = "item-side";
+    side.appendChild(statusBadge(resolveNotificationBadgeStatus(n)));
+
+    node.appendChild(main);
+    node.appendChild(side);
     list.appendChild(node);
   });
 }
 
 async function loadNotifications() {
+  try {
+    await loadIngredientLabels();
+  } catch {
+    // Label cache is best-effort for prettier names.
+  }
   const userId = getUserId();
-  // Show only pending notifications by default.
   const q = encodeQuery({ user_id: userId, status: "pending" });
   const result = await request(`/api/v1/notifications?${q}`, { method: "GET" });
-  renderNotifications(result.data.items || []);
+  renderNotifications(result?.data?.items || []);
+}
+
+async function reloadNotificationsPanel() {
+  await loadNotificationPreferences();
+  await loadNotifications();
 }
 
 async function runDueNotifications() {
@@ -5327,7 +5667,7 @@ async function refreshAll() {
     loadInventory(),
     loadRecipes(),
     loadShopping(),
-    loadNotifications(),
+    reloadNotificationsPanel(),
     loadCaptureSession(),
     loadReviewQueue()
   ];
@@ -5783,7 +6123,41 @@ function bindEvents() {
       }
     });
   }
-  $("reloadNotificationsBtn").addEventListener("click", loadNotifications);
+  $("reloadNotificationsBtn").addEventListener("click", reloadNotificationsPanel);
+  if ($("notificationLeadButtons")) {
+    $("notificationLeadButtons").addEventListener("click", (event) => {
+      const btn = event?.target?.closest?.("button[data-day-offset]");
+      if (!btn) {
+        return;
+      }
+      toggleNotificationLeadDay(btn.dataset.dayOffset);
+    });
+  }
+  if ($("notificationLeadAddBtn")) {
+    $("notificationLeadAddBtn").addEventListener("click", (event) => {
+      event.preventDefault();
+      addNotificationLeadDayFromInput();
+    });
+  }
+  if ($("notificationLeadInput")) {
+    $("notificationLeadInput").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      addNotificationLeadDayFromInput();
+    });
+  }
+  if ($("saveNotificationPrefsBtn")) {
+    $("saveNotificationPrefsBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await saveNotificationPreferences();
+      } catch (err) {
+        setGlobalError(err?.message || String(err));
+      }
+    });
+  }
   $("reloadReviewQueueBtn").addEventListener("click", loadReviewQueue);
   $("startCaptureSessionBtn").addEventListener("click", async (event) => {
     event.preventDefault();

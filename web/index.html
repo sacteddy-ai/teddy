@@ -365,6 +365,22 @@
           <h2 data-i18n="notifications_title">Notifications</h2>
           <button id="reloadNotificationsBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
         </div>
+        <p class="muted" data-i18n="notifications_pref_desc">Choose how many days before expiration to alert.</p>
+        <div id="notificationLeadButtons" class="inline-actions notification-lead-buttons"></div>
+        <div class="inline-fields notification-pref-fields">
+          <label>
+            <span data-i18n="label_notification_day">Day</span>
+            <input id="notificationLeadInput" type="number" min="0" max="60" placeholder="7">
+          </label>
+          <label>
+            &nbsp;
+            <button id="notificationLeadAddBtn" class="btn ghost" type="button" data-i18n="btn_add_day">Add Day</button>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button id="saveNotificationPrefsBtn" class="btn secondary" type="button" data-i18n="btn_save_notification_prefs">Save Alert Rule</button>
+        </div>
+        <div id="notificationPrefsMeta" class="muted"></div>
         <div id="notificationList" class="list"></div>
       </article>
     </section>
