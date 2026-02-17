@@ -65,9 +65,7 @@ let inventoryFilterStorage = "refrigerated";
 let inventorySelectedIds = new Set();
 let shoppingItemsCache = [];
 let shoppingAutoOnly = false;
-const NOTIFICATION_DAY_PRESETS = [14, 7, 3, 1, 0];
-let notificationDayOffsets = [3, 1, 0];
-let notificationCustomDayPresets = [];
+let notificationDayOffsets = [3];
 let notificationDayBounds = { min: 0, max: 60 };
 
 const I18N = {
@@ -174,11 +172,11 @@ const I18N = {
     btn_shopping_show_all: "Show All",
     btn_create_order_draft: "Create Order Draft",
     notifications_title: "Notifications",
-    notifications_pref_desc: "Choose how many days before expiration to alert.",
+    notifications_pref_desc: "Set one alert day before expiration.",
     label_notification_day: "Day",
-    btn_add_day: "Add Day",
+    btn_add_day: "Set Day",
     btn_save_notification_prefs: "Save Alert Rule",
-    notifications_pref_current: "Current alert days: {days}",
+    notifications_pref_current: "Current alert day: {days}",
     btn_edit_day: "Edit",
     btn_delete_day: "Delete",
     prompt_notification_edit_day: "Change day value (current: {day})",
@@ -5242,7 +5240,7 @@ async function createOrderDraftFromVisibleShopping() {
   }
 }
 
-function normalizeNotificationDayOffsets(value, fallback = [3, 1, 0], min = 0, max = 60) {
+function normalizeNotificationDayOffsets(value, fallback = [3], min = 0, max = 60) {
   const src = Array.isArray(value) ? value : fallback;
   const unique = new Set();
   for (const raw of src || []) {
@@ -5258,19 +5256,20 @@ function normalizeNotificationDayOffsets(value, fallback = [3, 1, 0], min = 0, m
   }
   const normalized = Array.from(unique).sort((a, b) => b - a);
   if (normalized.length > 0) {
-    return normalized;
+    return [normalized[0]];
   }
-  return [...fallback];
-}
-
-function isBuiltInNotificationDay(dayOffset) {
-  const n = Math.round(Number(dayOffset) || 0);
-  return NOTIFICATION_DAY_PRESETS.includes(n);
-}
-
-function normalizeNotificationCustomDayPresets(value, min = 0, max = 60) {
-  const base = normalizeNotificationDayOffsets(value, [], min, max);
-  return base.filter((d) => !isBuiltInNotificationDay(d));
+  const fb = Array.isArray(fallback) ? fallback : [3];
+  for (const raw of fb) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      continue;
+    }
+    const day = Math.round(n);
+    if (day >= Number(min) && day <= Number(max)) {
+      return [day];
+    }
+  }
+  return [3];
 }
 
 function parseNotificationDayValue(value) {
@@ -5285,9 +5284,6 @@ function parseNotificationDayValue(value) {
 }
 
 function notificationDayRangeError() {
-  if (currentLang === "ko") {
-    return `${notificationDayBounds.min}~${notificationDayBounds.max} 사이 숫자를 입력하세요.`;
-  }
   return tf("err_notification_day_range", {
     min: notificationDayBounds.min,
     max: notificationDayBounds.max
@@ -5303,8 +5299,13 @@ function formatNotificationDayToken(dayOffset) {
 }
 
 function formatNotificationDaysList(dayOffsets) {
-  const arr = normalizeNotificationDayOffsets(dayOffsets, [3, 1, 0], notificationDayBounds.min, notificationDayBounds.max);
+  const arr = normalizeNotificationDayOffsets(dayOffsets, [3], notificationDayBounds.min, notificationDayBounds.max);
   return arr.map((d) => formatNotificationDayToken(d)).join(", ");
+}
+
+function getActiveNotificationDay() {
+  const arr = normalizeNotificationDayOffsets(notificationDayOffsets, [3], notificationDayBounds.min, notificationDayBounds.max);
+  return arr[0];
 }
 
 function setNotificationPrefsMeta(message) {
@@ -5321,148 +5322,26 @@ function renderNotificationLeadButtons() {
     return;
   }
 
-  const merged = new Set([
-    ...(NOTIFICATION_DAY_PRESETS || []),
-    ...(notificationCustomDayPresets || []),
-    ...(notificationDayOffsets || [])
-  ]);
-  const sorted = Array.from(merged)
-    .filter((n) => Number.isFinite(n))
-    .map((n) => Math.round(n))
-    .sort((a, b) => b - a);
-
+  const day = getActiveNotificationDay();
   root.innerHTML = "";
-  sorted.forEach((day) => {
-    const chip = document.createElement("div");
-    chip.className = "notification-day-chip";
 
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "btn tiny ghost";
-    if (notificationDayOffsets.includes(day)) {
-      toggleBtn.classList.add("active");
-    }
-    toggleBtn.dataset.dayOffset = String(day);
-    toggleBtn.dataset.dayAction = "toggle";
-    toggleBtn.textContent = formatNotificationDayToken(day);
-    chip.appendChild(toggleBtn);
-
-    if (notificationCustomDayPresets.includes(day)) {
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn tiny ghost notification-day-action";
-      editBtn.dataset.dayOffset = String(day);
-      editBtn.dataset.dayAction = "edit_custom";
-      editBtn.textContent = currentLang === "ko" ? "수정" : t("btn_edit_day");
-      chip.appendChild(editBtn);
-
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "btn tiny ghost notification-day-action";
-      delBtn.dataset.dayOffset = String(day);
-      delBtn.dataset.dayAction = "remove_custom";
-      delBtn.textContent = currentLang === "ko" ? "삭제" : t("btn_delete_day");
-      chip.appendChild(delBtn);
-    }
-
-    root.appendChild(chip);
-  });
+  const chip = document.createElement("div");
+  chip.className = "notification-day-chip";
+  const badge = document.createElement("button");
+  badge.type = "button";
+  badge.className = "btn tiny ghost active";
+  badge.textContent = formatNotificationDayToken(day);
+  chip.appendChild(badge);
+  root.appendChild(chip);
 
   const input = $("notificationLeadInput");
   if (input) {
     input.min = String(notificationDayBounds.min);
     input.max = String(notificationDayBounds.max);
+    input.value = String(day);
   }
 
-  setNotificationPrefsMeta(tf("notifications_pref_current", { days: formatNotificationDaysList(notificationDayOffsets) }));
-}
-
-function toggleNotificationLeadDay(dayOffset) {
-  const day = parseNotificationDayValue(dayOffset);
-  if (day === null) {
-    return;
-  }
-  const next = new Set(notificationDayOffsets || []);
-  if (next.has(day)) {
-    next.delete(day);
-  } else {
-    next.add(day);
-  }
-  const normalized = normalizeNotificationDayOffsets(Array.from(next), [], notificationDayBounds.min, notificationDayBounds.max);
-  if (!normalized.length) {
-    setGlobalError(t("err_notification_no_offsets"));
-    return;
-  }
-  notificationDayOffsets = normalized;
-  renderNotificationLeadButtons();
-}
-
-function removeCustomNotificationLeadDay(dayOffset) {
-  const day = parseNotificationDayValue(dayOffset);
-  if (day === null) {
-    return;
-  }
-  if (!notificationCustomDayPresets.includes(day)) {
-    return;
-  }
-
-  notificationCustomDayPresets = notificationCustomDayPresets.filter((d) => d !== day);
-  if (notificationDayOffsets.includes(day)) {
-    const next = notificationDayOffsets.filter((d) => d !== day);
-    if (!next.length) {
-      setGlobalError(t("err_notification_no_offsets"));
-      notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
-        [...notificationCustomDayPresets, day],
-        notificationDayBounds.min,
-        notificationDayBounds.max
-      );
-      return;
-    }
-    notificationDayOffsets = normalizeNotificationDayOffsets(next, [], notificationDayBounds.min, notificationDayBounds.max);
-  }
-  renderNotificationLeadButtons();
-}
-
-function editCustomNotificationLeadDay(dayOffset) {
-  const day = parseNotificationDayValue(dayOffset);
-  if (day === null) {
-    return;
-  }
-  if (!notificationCustomDayPresets.includes(day)) {
-    return;
-  }
-
-  const promptMsg =
-    currentLang === "ko" ? `바꿀 일수를 입력하세요 (현재: ${day})` : tf("prompt_notification_edit_day", { day });
-  const raw = window.prompt(promptMsg, String(day));
-  if (raw === null) {
-    return;
-  }
-  const nextDay = parseNotificationDayValue(raw);
-  if (nextDay === null) {
-    setGlobalError(notificationDayRangeError());
-    return;
-  }
-  if (nextDay === day) {
-    return;
-  }
-
-  notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
-    [...notificationCustomDayPresets.filter((d) => d !== day), nextDay],
-    notificationDayBounds.min,
-    notificationDayBounds.max
-  );
-
-  if (notificationDayOffsets.includes(day)) {
-    notificationDayOffsets = normalizeNotificationDayOffsets(
-      [...notificationDayOffsets.filter((d) => d !== day), nextDay],
-      [],
-      notificationDayBounds.min,
-      notificationDayBounds.max
-    );
-  }
-
-  renderNotificationLeadButtons();
+  setNotificationPrefsMeta(tf("notifications_pref_current", { days: formatNotificationDaysList([day]) }));
 }
 
 function addNotificationLeadDayFromInput() {
@@ -5481,23 +5360,7 @@ function addNotificationLeadDayFromInput() {
     return;
   }
 
-  if (!isBuiltInNotificationDay(n) && !notificationCustomDayPresets.includes(n)) {
-    notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
-      [...notificationCustomDayPresets, n],
-      notificationDayBounds.min,
-      notificationDayBounds.max
-    );
-  }
-
-  if (!notificationDayOffsets.includes(n)) {
-    notificationDayOffsets = normalizeNotificationDayOffsets(
-      [...notificationDayOffsets, n],
-      [3, 1, 0],
-      notificationDayBounds.min,
-      notificationDayBounds.max
-    );
-  }
-  input.value = "";
+  notificationDayOffsets = [n];
   renderNotificationLeadButtons();
 }
 
@@ -5514,49 +5377,23 @@ async function loadNotificationPreferences() {
   };
   notificationDayOffsets = normalizeNotificationDayOffsets(
     data?.day_offsets,
-    [3, 1, 0],
+    [3],
     notificationDayBounds.min,
     notificationDayBounds.max
   );
-  const customFromServer = normalizeNotificationCustomDayPresets(
-    data?.custom_day_presets,
-    notificationDayBounds.min,
-    notificationDayBounds.max
-  );
-  if (customFromServer.length > 0) {
-    notificationCustomDayPresets = customFromServer;
-  } else {
-    notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
-      notificationDayOffsets,
-      notificationDayBounds.min,
-      notificationDayBounds.max
-    );
-  }
   renderNotificationLeadButtons();
 }
 
 async function saveNotificationPreferences() {
-  const dayOffsets = normalizeNotificationDayOffsets(
-    notificationDayOffsets,
-    [],
-    notificationDayBounds.min,
-    notificationDayBounds.max
-  );
-  if (!dayOffsets.length) {
-    throw new Error(t("err_notification_no_offsets"));
-  }
-
+  const day = getActiveNotificationDay();
   const userId = getUserId();
   const result = await request("/api/v1/notifications/preferences", {
     method: "POST",
     body: JSON.stringify({
       user_id: userId,
-      day_offsets: dayOffsets,
-      custom_day_presets: normalizeNotificationCustomDayPresets(
-        notificationCustomDayPresets,
-        notificationDayBounds.min,
-        notificationDayBounds.max
-      ),
+      day_offset: day,
+      day_offsets: [day],
+      custom_day_presets: [],
       apply_to_existing: true
     })
   });
@@ -5564,12 +5401,7 @@ async function saveNotificationPreferences() {
   const data = result?.data || {};
   notificationDayOffsets = normalizeNotificationDayOffsets(
     data?.day_offsets,
-    dayOffsets,
-    notificationDayBounds.min,
-    notificationDayBounds.max
-  );
-  notificationCustomDayPresets = normalizeNotificationCustomDayPresets(
-    data?.custom_day_presets,
+    [day],
     notificationDayBounds.min,
     notificationDayBounds.max
   );
@@ -6288,26 +6120,6 @@ function bindEvents() {
     });
   }
   $("reloadNotificationsBtn").addEventListener("click", reloadNotificationsPanel);
-  if ($("notificationLeadButtons")) {
-    $("notificationLeadButtons").addEventListener("click", (event) => {
-      const btn = event?.target?.closest?.("button[data-day-offset][data-day-action]");
-      if (!btn) {
-        return;
-      }
-      const action = String(btn.dataset.dayAction || "").trim();
-      if (action === "toggle") {
-        toggleNotificationLeadDay(btn.dataset.dayOffset);
-        return;
-      }
-      if (action === "remove_custom") {
-        removeCustomNotificationLeadDay(btn.dataset.dayOffset);
-        return;
-      }
-      if (action === "edit_custom") {
-        editCustomNotificationLeadDay(btn.dataset.dayOffset);
-      }
-    });
-  }
   if ($("notificationLeadAddBtn")) {
     $("notificationLeadAddBtn").addEventListener("click", (event) => {
       event.preventDefault();

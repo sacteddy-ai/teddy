@@ -21,6 +21,14 @@ function normalizeUserId(value) {
   return String(value || "demo-user").trim() || "demo-user";
 }
 
+function toSingleDayOffset(value, fallback = 3) {
+  const list = sanitizeNotificationDayOffsets(value, [fallback]);
+  if (Array.isArray(list) && list.length > 0) {
+    return Math.round(Number(list[0]) || fallback);
+  }
+  return Math.round(Number(fallback) || 3);
+}
+
 function normalizeBoolean(value, fallback = false) {
   if (typeof value === "boolean") {
     return value;
@@ -42,12 +50,11 @@ function normalizeBoolean(value, fallback = false) {
 }
 
 function buildPreferenceResponse(pref) {
-  const dayOffsets = sanitizeNotificationDayOffsets(pref?.day_offsets, DEFAULT_NOTIFICATION_DAY_OFFSETS);
-  const customDayPresetsRaw = sanitizeNotificationDayOffsets(pref?.custom_day_presets, []);
-  const customDayPresets = customDayPresetsRaw.filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d));
+  const dayOffset = toSingleDayOffset(pref?.day_offsets, DEFAULT_NOTIFICATION_DAY_OFFSETS[0] || 3);
+  const dayOffsets = [dayOffset];
   return {
     day_offsets: dayOffsets,
-    custom_day_presets: customDayPresets,
+    custom_day_presets: [],
     updated_at: pref?.updated_at || null,
     default_day_offsets: [...DEFAULT_NOTIFICATION_DAY_OFFSETS],
     min_day_offset: MIN_NOTIFICATION_DAY_OFFSET,
@@ -77,18 +84,19 @@ export async function onRequest(context) {
 
     const payload = await readJsonOptional(context.request);
     const userId = normalizeUserId(payload?.user_id);
-    const dayOffsets = sanitizeNotificationDayOffsets(payload?.day_offsets, DEFAULT_NOTIFICATION_DAY_OFFSETS);
-    const customDayPresetsInput = sanitizeNotificationDayOffsets(payload?.custom_day_presets, []);
-    const customFromSelected = dayOffsets.filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d));
-    const customDayPresets = Array.from(new Set([...(customDayPresetsInput || []), ...(customFromSelected || [])]))
-      .filter((d) => !DEFAULT_NOTIFICATION_DAY_OFFSETS.includes(d))
-      .sort((a, b) => b - a);
+    const incomingOffsets = Array.isArray(payload?.day_offsets)
+      ? payload.day_offsets
+      : payload?.day_offset !== null && payload?.day_offset !== undefined
+        ? [payload.day_offset]
+        : DEFAULT_NOTIFICATION_DAY_OFFSETS;
+    const selectedDay = toSingleDayOffset(incomingOffsets, DEFAULT_NOTIFICATION_DAY_OFFSETS[0] || 3);
+    const dayOffsets = [selectedDay];
     const applyToExisting = normalizeBoolean(payload?.apply_to_existing, true);
     const updatedAt = nowIso();
 
     await putObject(context.env, notificationPreferencesKey(userId), {
       day_offsets: dayOffsets,
-      custom_day_presets: customDayPresets,
+      custom_day_presets: [],
       updated_at: updatedAt
     });
 
@@ -122,7 +130,7 @@ export async function onRequest(context) {
 
     return jsonResponse(context, {
       data: {
-        ...buildPreferenceResponse({ day_offsets: dayOffsets, custom_day_presets: customDayPresets, updated_at: updatedAt }),
+        ...buildPreferenceResponse({ day_offsets: dayOffsets, custom_day_presets: [], updated_at: updatedAt }),
         apply_to_existing: applyToExisting,
         affected_inventory_items: affectedInventoryItems,
         regenerated_notifications: regeneratedNotifications

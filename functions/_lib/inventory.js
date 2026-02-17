@@ -32,7 +32,11 @@ async function logUsageEventsBestEffort(context, userId, events) {
 async function getNotificationDayOffsetsForUser(context, userId) {
   const prefsKey = notificationPreferencesKey(userId);
   const prefs = await getObject(context.env, prefsKey);
-  return sanitizeNotificationDayOffsets(prefs?.day_offsets);
+  const offsets = sanitizeNotificationDayOffsets(prefs?.day_offsets, [3]);
+  if (Array.isArray(offsets) && offsets.length > 0) {
+    return [Math.round(Number(offsets[0]) || 3)];
+  }
+  return [3];
 }
 
 export async function createInventoryItemRecord(context, params) {
