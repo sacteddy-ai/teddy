@@ -5285,6 +5285,9 @@ function parseNotificationDayValue(value) {
 }
 
 function notificationDayRangeError() {
+  if (currentLang === "ko") {
+    return `${notificationDayBounds.min}~${notificationDayBounds.max} 사이 숫자를 입력하세요.`;
+  }
   return tf("err_notification_day_range", {
     min: notificationDayBounds.min,
     max: notificationDayBounds.max
@@ -5350,7 +5353,7 @@ function renderNotificationLeadButtons() {
       editBtn.className = "btn tiny ghost notification-day-action";
       editBtn.dataset.dayOffset = String(day);
       editBtn.dataset.dayAction = "edit_custom";
-      editBtn.textContent = t("btn_edit_day");
+      editBtn.textContent = currentLang === "ko" ? "수정" : t("btn_edit_day");
       chip.appendChild(editBtn);
 
       const delBtn = document.createElement("button");
@@ -5358,7 +5361,7 @@ function renderNotificationLeadButtons() {
       delBtn.className = "btn tiny ghost notification-day-action";
       delBtn.dataset.dayOffset = String(day);
       delBtn.dataset.dayAction = "remove_custom";
-      delBtn.textContent = t("btn_delete_day");
+      delBtn.textContent = currentLang === "ko" ? "삭제" : t("btn_delete_day");
       chip.appendChild(delBtn);
     }
 
@@ -5429,7 +5432,9 @@ function editCustomNotificationLeadDay(dayOffset) {
     return;
   }
 
-  const raw = window.prompt(tf("prompt_notification_edit_day", { day }), String(day));
+  const promptMsg =
+    currentLang === "ko" ? `바꿀 일수를 입력하세요 (현재: ${day})` : tf("prompt_notification_edit_day", { day });
+  const raw = window.prompt(promptMsg, String(day));
   if (raw === null) {
     return;
   }
