@@ -4264,7 +4264,7 @@ async function loadSummary() {
 }
 
 async function consumeItem(itemId) {
-  await request(`/api/v1/inventory/items/${itemId}/consume`, {
+  const result = await request(`/api/v1/inventory/items/${itemId}/consume`, {
     method: "POST",
     body: JSON.stringify({
       user_id: getUserId(),
@@ -4272,6 +4272,43 @@ async function consumeItem(itemId) {
       mark_opened: true
     })
   });
+  return result?.data || null;
+}
+
+function applyInventoryMutationToCache(mutation, fallbackItemId = "") {
+  const payload = mutation && typeof mutation === "object" ? mutation : {};
+  const item = payload?.item && typeof payload.item === "object" ? payload.item : null;
+  const removed = Boolean(payload?.removed) || Number(item?.quantity || 0) <= 0;
+  const targetId = String(item?.id || fallbackItemId || "").trim();
+  if (!targetId) {
+    return;
+  }
+
+  const rows = Array.isArray(inventoryItemsCache) ? inventoryItemsCache : [];
+  const next = [];
+  let replaced = false;
+
+  for (const row of rows) {
+    const rowId = String(row?.id || "").trim();
+    if (rowId !== targetId) {
+      next.push(row);
+      continue;
+    }
+    replaced = true;
+    if (!removed && item) {
+      next.push(item);
+    }
+  }
+
+  if (!replaced && !removed && item) {
+    next.push(item);
+  }
+
+  if (removed) {
+    inventorySelectedIds.delete(targetId);
+  }
+
+  inventoryItemsCache = next;
 }
 
 function detectDefaultInventoryFilterStorage() {
@@ -4451,7 +4488,7 @@ async function adjustInventoryItemQuantity(itemId, deltaQuantity) {
       delta_quantity: delta
     })
   });
-  return result?.data?.item || null;
+  return result?.data || null;
 }
 
 async function deleteInventoryItem(itemId) {
@@ -4487,9 +4524,11 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
 
   try {
     for (const id of selected) {
-      await adjustInventoryItemQuantity(id, deltaQuantity);
+      const mutation = await adjustInventoryItemQuantity(id, deltaQuantity);
+      applyInventoryMutationToCache(mutation, id);
     }
-    await refreshAll();
+    renderInventoryFromCache();
+    await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
     clearInventorySelection();
   } finally {
     syncInventoryBulkBar();
@@ -4521,8 +4560,10 @@ async function bulkDeleteSelectedInventory() {
   try {
     for (const id of selected) {
       await deleteInventoryItem(id);
+      applyInventoryMutationToCache({ removed: true }, id);
     }
-    await refreshAll();
+    renderInventoryFromCache();
+    await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
     clearInventorySelection();
   } finally {
     syncInventoryBulkBar();
@@ -4565,8 +4606,10 @@ function buildInventoryNode(item) {
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
-      await consumeItem(item.id);
-      await refreshAll();
+      const mutation = await consumeItem(item.id);
+      applyInventoryMutationToCache(mutation, item.id);
+      renderInventoryFromCache();
+      await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
     } catch (err) {
       setGlobalError(err.message);
     } finally {

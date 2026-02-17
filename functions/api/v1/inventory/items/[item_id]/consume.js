@@ -29,12 +29,15 @@ export async function onRequest(context) {
 
     const result = await invokeInventoryConsumption(context, userId, itemId, consumedQuantity, openedAt, markOpened);
     const normalized = normalizeInventoryStatus(result.updated_item);
+    const removed = Boolean(result?.removed);
+    const shouldReorder = removed || Number(normalized?.quantity || 0) <= 0;
 
     return jsonResponse(context, {
       data: {
         item: normalized,
         consumed_quantity: consumedQuantity,
-        should_reorder: Number(normalized?.quantity || 0) <= 0
+        removed,
+        should_reorder: shouldReorder
       }
     });
   } catch (err) {
@@ -45,4 +48,3 @@ export async function onRequest(context) {
     return errorResponse(context, msg, 400);
   }
 }
-

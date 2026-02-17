@@ -4,6 +4,10 @@ import { newExpirationNotifications } from "./notifications.js";
 import { nowIso, parseIsoDateToEpochDay, todayEpochDay, epochDayToIso, normalizeIngredientKey } from "./util.js";
 import { getArray, putArray, inventoryKey, notificationsKey } from "./store.js";
 
+function sameInventoryItemId(left, right) {
+  return String(left ?? "").trim() === String(right ?? "").trim();
+}
+
 export function normalizeInventoryStatus(item, asOfEpochDay = null) {
   if (!item?.suggested_expiration_date) {
     return item;
@@ -127,7 +131,7 @@ export async function invokeInventoryConsumption(context, userId, itemId, consum
 
   const now = nowIso();
   for (const item of allItems) {
-    if (item?.id !== itemId) {
+    if (!sameInventoryItemId(item?.id, itemId)) {
       updated.push(item);
       continue;
     }
@@ -237,7 +241,7 @@ export async function invokeInventoryQuantityAdjustment(context, userId, itemId,
   }
 
   for (const item of allItems) {
-    if (item?.id !== itemId) {
+    if (!sameInventoryItemId(item?.id, itemId)) {
       updated.push(item);
       continue;
     }
@@ -316,7 +320,7 @@ export async function deleteInventoryItemRecord(context, userId, itemId) {
   const updated = [];
 
   for (const item of allItems) {
-    if (item?.id === itemId) {
+    if (sameInventoryItemId(item?.id, itemId)) {
       found = true;
       removedItem = item;
       continue;
