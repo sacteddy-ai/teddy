@@ -170,6 +170,8 @@ const I18N = {
     btn_shopping_show_all: "Show All",
     btn_create_order_draft: "Create Order Draft",
     notifications_title: "Notifications",
+    expiring_focus_title: "Expiring Items (All Storage)",
+    expiring_focus_desc: "Shows items nearing expiration across refrigerated/frozen/room.",
     btn_consume_1: "Consume 1",
     btn_select_all: "Select all",
     btn_clear_selection: "Clear",
@@ -189,6 +191,7 @@ const I18N = {
     empty_shopping: "No shopping suggestions.",
     empty_shopping_auto_only: "No auto-order candidates.",
     empty_notifications: "No notifications.",
+    empty_expiring_focus: "No expiring items right now.",
     empty_capture_none: "Start a capture session.",
     empty_capture_no_session: "No active capture session.",
     empty_capture_draft: "Draft is empty.",
@@ -4365,6 +4368,7 @@ function syncInventoryTabsUI() {
 function renderInventoryFromCache() {
   const list = $("inventoryList");
   if (!list) {
+    renderExpiringFocusFromCache();
     return;
   }
   list.innerHTML = "";
@@ -4374,17 +4378,76 @@ function renderInventoryFromCache() {
 
   if (filtered.length === 0) {
     list.appendChild(emptyNode(t("empty_inventory")));
-    syncInventoryBulkBar();
-    return;
+  } else {
+    filtered.forEach((item) => list.appendChild(buildInventoryNode(item)));
   }
 
-  filtered.forEach((item) => list.appendChild(buildInventoryNode(item)));
   syncInventoryBulkBar();
+  renderExpiringFocusFromCache();
 }
 
 function getVisibleInventoryItems() {
   const items = Array.isArray(inventoryItemsCache) ? inventoryItemsCache : [];
   return items.filter((item) => normalizeStorageType(item?.storage_type || "") === inventoryFilterStorage);
+}
+
+function getExpiringFocusItemsFromCache() {
+  const items = Array.isArray(inventoryItemsCache) ? inventoryItemsCache : [];
+  const onlyExpiringSoon = items.filter((item) => String(item?.status || "").trim().toLowerCase() === "expiring_soon");
+  return onlyExpiringSoon.sort((a, b) => {
+    const ad = Number(a?.days_remaining ?? 9999);
+    const bd = Number(b?.days_remaining ?? 9999);
+    if (ad !== bd) {
+      return ad - bd;
+    }
+    return String(a?.ingredient_name || "").localeCompare(String(b?.ingredient_name || ""));
+  });
+}
+
+function buildExpiringFocusNode(item) {
+  const node = document.createElement("div");
+  node.className = "item";
+
+  const main = document.createElement("div");
+  main.className = "item-main";
+
+  const name = document.createElement("strong");
+  name.className = "name";
+  name.textContent = ingredientLabel(item?.ingredient_key, item?.ingredient_name);
+  main.appendChild(name);
+
+  const meta = document.createElement("span");
+  meta.className = "meta";
+  meta.textContent = tf("meta_inventory_line", {
+    qty: formatQuantityValue(item?.quantity),
+    unit: item?.unit || "ea",
+    storage: storageLabel(item?.storage_type),
+    exp: item?.suggested_expiration_date || "-",
+    days: Number(item?.days_remaining ?? 0)
+  });
+  main.appendChild(meta);
+
+  const side = document.createElement("div");
+  side.className = "item-side";
+  side.appendChild(statusBadge(item?.status || "expiring_soon"));
+
+  node.appendChild(main);
+  node.appendChild(side);
+  return node;
+}
+
+function renderExpiringFocusFromCache() {
+  const list = $("expiringFocusList");
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  const rows = getExpiringFocusItemsFromCache();
+  if (!rows.length) {
+    list.appendChild(emptyNode(t("empty_expiring_focus")));
+    return;
+  }
+  rows.forEach((item) => list.appendChild(buildExpiringFocusNode(item)));
 }
 
 function detectDefaultShoppingAutoOnly() {
@@ -5699,6 +5762,9 @@ function bindEvents() {
     }
   });
   $("reloadInventoryBtn").addEventListener("click", loadInventory);
+  if ($("reloadExpiringFocusBtn")) {
+    $("reloadExpiringFocusBtn").addEventListener("click", loadInventory);
+  }
   $("reloadRecipesBtn").addEventListener("click", loadRecipes);
   $("reloadShoppingBtn").addEventListener("click", loadShopping);
   if ($("toggleShoppingAutoFilterBtn")) {
