@@ -265,6 +265,30 @@ Invoke-RestMethod -Method Post `
   -Body ($payload | ConvertTo-Json)
 ```
 
+## New migration track (Next.js + FastAPI)
+
+The repository now includes a parallel migration stack:
+
+- `frontend-next/` -> Next.js + TypeScript dashboard
+- `backend-fastapi/` -> FastAPI + Pydantic API
+
+Design and scope details:
+
+- `MIGRATION_NEXT_FASTAPI.md`
+
+Quick start:
+
+1. Start backend:
+   - `cd backend-fastapi`
+   - `pip install -r requirements.txt`
+   - `uvicorn app.main:app --reload --port 8000`
+2. Start frontend:
+   - `cd frontend-next`
+   - `npm install`
+   - `npm run dev`
+3. Optional helper script (PowerShell):
+   - `powershell -ExecutionPolicy Bypass -File .\scripts\run-migration-dev.ps1`
+
 Get recipe recommendations:
 
 ```powershell

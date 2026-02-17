@@ -861,7 +861,8 @@ textarea {
   font-weight: 800;
 }
 
-.qty-stepper .qty-value {
+.qty-stepper .qty-value,
+.qty-stepper .qty-input {
   min-width: 28px;
   text-align: center;
   font-weight: 800;
@@ -871,6 +872,21 @@ textarea {
 
 .item-qty-stepper .qty-value {
   min-width: 36px;
+}
+
+.item-qty-stepper .qty-input {
+  width: 58px;
+  min-width: 58px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: #fff;
+}
+
+.item-qty-stepper .qty-input:focus {
+  outline: none;
+  border-color: var(--accent-2);
 }
 
 .bulk-check {
@@ -910,6 +926,13 @@ body.easy .qty-stepper .btn {
 body.easy .qty-stepper .qty-value {
   font-size: 1.02rem;
   min-width: 42px;
+}
+
+body.easy .item-qty-stepper .qty-input {
+  width: 74px;
+  min-width: 74px;
+  height: 36px;
+  font-size: 1.02rem;
 }
 
 body.easy .inventory-select {

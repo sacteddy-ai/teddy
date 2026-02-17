@@ -9,6 +9,8 @@ tmp_openai_payload.json
 .env
 .env.*
 !.env.example
+!backend-fastapi/.env.example
+!frontend-next/.env.local.example
 
 # OS/editor
 .DS_Store
@@ -20,3 +22,9 @@ Thumbs.db
 node_modules/
 .wrangler/
 dist/
+
+# Migration stack artifacts
+frontend-next/.next/
+frontend-next/node_modules/
+backend-fastapi/.venv/
+backend-fastapi/storage/*.json

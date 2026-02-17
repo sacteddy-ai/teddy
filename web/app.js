@@ -4334,6 +4334,17 @@ function formatQuantityValue(value) {
   return String(rounded);
 }
 
+function parseEditableQuantity(value) {
+  if (typeof value === "string" && String(value).trim() === "") {
+    return null;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    return null;
+  }
+  return Math.round(n * 100) / 100;
+}
+
 function confirmDeleteByMinusSingle() {
   const msg =
     currentLang === "ko"
@@ -4668,16 +4679,24 @@ function buildInventoryNode(item) {
   const badgeHost = node.querySelector(".badge");
   badgeHost.replaceWith(statusBadge(item.status));
 
-  const qtyValueEl = node.querySelector(".qty-value");
-  if (qtyValueEl) {
-    qtyValueEl.textContent = formatQuantityValue(item.quantity);
+  const qtyInputEl = node.querySelector(".qty-input");
+  if (qtyInputEl) {
+    qtyInputEl.value = formatQuantityValue(item.quantity);
   }
+
+  const syncQtyInputToCurrent = () => {
+    if (!qtyInputEl) {
+      return;
+    }
+    qtyInputEl.value = formatQuantityValue(item?.quantity || 0);
+  };
 
   const minusBtn = node.querySelector(".qty-minus-btn");
   const plusBtn = node.querySelector(".qty-plus-btn");
   const setAdjustDisabled = (disabled) => {
     if (minusBtn) minusBtn.disabled = disabled;
     if (plusBtn) plusBtn.disabled = disabled;
+    if (qtyInputEl) qtyInputEl.disabled = disabled;
   };
 
   const applyItemDelta = async (delta) => {
@@ -4702,6 +4721,27 @@ function buildInventoryNode(item) {
     }
   };
 
+  const applyItemTargetQuantity = async (nextQuantity) => {
+    const qtyNow = Math.round(Number(item?.quantity || 0) * 100) / 100;
+    const targetQty = parseEditableQuantity(nextQuantity);
+    if (targetQty === null) {
+      syncQtyInputToCurrent();
+      return;
+    }
+    const delta = Math.round((targetQty - qtyNow) * 100) / 100;
+    if (Math.abs(delta) < 0.000001) {
+      syncQtyInputToCurrent();
+      return;
+    }
+    if (delta < 0 && qtyNow > 0 && targetQty <= 0) {
+      if (!confirmDeleteByMinusSingle()) {
+        syncQtyInputToCurrent();
+        return;
+      }
+    }
+    await applyItemDelta(delta);
+  };
+
   if (minusBtn) {
     minusBtn.addEventListener("click", async () => {
       await applyItemDelta(-1);
@@ -4710,6 +4750,37 @@ function buildInventoryNode(item) {
   if (plusBtn) {
     plusBtn.addEventListener("click", async () => {
       await applyItemDelta(1);
+    });
+  }
+
+  if (qtyInputEl) {
+    const commitQuantityInput = async () => {
+      if (qtyInputEl.dataset.committing === "1") {
+        return;
+      }
+      qtyInputEl.dataset.committing = "1";
+      try {
+        await applyItemTargetQuantity(qtyInputEl.value);
+      } finally {
+        delete qtyInputEl.dataset.committing;
+      }
+    };
+
+    qtyInputEl.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        await commitQuantityInput();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        syncQtyInputToCurrent();
+        qtyInputEl.blur();
+      }
+    });
+
+    qtyInputEl.addEventListener("blur", () => {
+      void commitQuantityInput();
     });
   }
 
