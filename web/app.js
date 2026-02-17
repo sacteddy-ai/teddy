@@ -4418,6 +4418,7 @@ function clearInventorySelection() {
 
 function syncInventoryBulkBar() {
   const countEl = $("inventorySelectedCount");
+  const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
   const delBtn = $("inventoryBulkDeleteBtn");
   const clearBtn = $("inventoryBulkClearBtn");
@@ -4442,6 +4443,7 @@ function syncInventoryBulkBar() {
   }
 
   const hasAny = selectedVisible.length > 0;
+  if (consumeBtn) consumeBtn.disabled = !hasAny;
   if (addBtn) addBtn.disabled = !hasAny;
   if (delBtn) delBtn.disabled = !hasAny;
   if (clearBtn) clearBtn.disabled = !hasAny;
@@ -4513,10 +4515,12 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
     return;
   }
 
+  const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
   const delBtn = $("inventoryBulkDeleteBtn");
   const clearBtn = $("inventoryBulkClearBtn");
   const selectAll = $("inventorySelectAll");
+  if (consumeBtn) consumeBtn.disabled = true;
   if (addBtn) addBtn.disabled = true;
   if (delBtn) delBtn.disabled = true;
   if (clearBtn) clearBtn.disabled = true;
@@ -4548,10 +4552,12 @@ async function bulkDeleteSelectedInventory() {
     return;
   }
 
+  const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
   const delBtn = $("inventoryBulkDeleteBtn");
   const clearBtn = $("inventoryBulkClearBtn");
   const selectAll = $("inventorySelectAll");
+  if (consumeBtn) consumeBtn.disabled = true;
   if (addBtn) addBtn.disabled = true;
   if (delBtn) delBtn.disabled = true;
   if (clearBtn) clearBtn.disabled = true;
@@ -5326,6 +5332,16 @@ function bindEvents() {
       event.preventDefault();
       try {
         await bulkAdjustSelectedInventory(1);
+      } catch (err) {
+        setGlobalError(err?.message || String(err));
+      }
+    });
+  }
+  if ($("inventoryBulkConsumeBtn")) {
+    $("inventoryBulkConsumeBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await bulkAdjustSelectedInventory(-1);
       } catch (err) {
         setGlobalError(err?.message || String(err));
       }
