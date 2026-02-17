@@ -811,8 +811,42 @@ textarea {
 
 .bulk-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 6px;
+  background: #fff;
+}
+
+.qty-stepper .btn {
+  min-width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.qty-stepper .qty-value {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.item-qty-stepper .qty-value {
+  min-width: 36px;
 }
 
 .bulk-check {
@@ -841,6 +875,17 @@ body.easy .bulk-actions .btn {
   padding: 12px 14px;
   font-size: 0.98rem;
   border-radius: 14px;
+}
+
+body.easy .qty-stepper .btn {
+  min-width: 42px;
+  height: 36px;
+  font-size: 1.08rem;
+}
+
+body.easy .qty-stepper .qty-value {
+  font-size: 1.02rem;
+  min-width: 42px;
 }
 
 body.easy .inventory-select {

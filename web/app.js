@@ -4263,18 +4263,6 @@ async function loadSummary() {
   renderStats(result.data);
 }
 
-async function consumeItem(itemId) {
-  const result = await request(`/api/v1/inventory/items/${itemId}/consume`, {
-    method: "POST",
-    body: JSON.stringify({
-      user_id: getUserId(),
-      consumed_quantity: 1,
-      mark_opened: true
-    })
-  });
-  return result?.data || null;
-}
-
 function applyInventoryMutationToCache(mutation, fallbackItemId = "") {
   const payload = mutation && typeof mutation === "object" ? mutation : {};
   const item = payload?.item && typeof payload.item === "object" ? payload.item : null;
@@ -4309,6 +4297,18 @@ function applyInventoryMutationToCache(mutation, fallbackItemId = "") {
   }
 
   inventoryItemsCache = next;
+}
+
+function formatQuantityValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return "0";
+  }
+  const rounded = Math.round(n * 100) / 100;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.0001) {
+    return String(Math.round(rounded));
+  }
+  return String(rounded);
 }
 
 function detectDefaultInventoryFilterStorage() {
@@ -4420,7 +4420,6 @@ function syncInventoryBulkBar() {
   const countEl = $("inventorySelectedCount");
   const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
-  const delBtn = $("inventoryBulkDeleteBtn");
   const clearBtn = $("inventoryBulkClearBtn");
   const selectAll = $("inventorySelectAll");
 
@@ -4445,7 +4444,6 @@ function syncInventoryBulkBar() {
   const hasAny = selectedVisible.length > 0;
   if (consumeBtn) consumeBtn.disabled = !hasAny;
   if (addBtn) addBtn.disabled = !hasAny;
-  if (delBtn) delBtn.disabled = !hasAny;
   if (clearBtn) clearBtn.disabled = !hasAny;
 
   if (selectAll) {
@@ -4493,20 +4491,6 @@ async function adjustInventoryItemQuantity(itemId, deltaQuantity) {
   return result?.data || null;
 }
 
-async function deleteInventoryItem(itemId) {
-  const id = String(itemId || "").trim();
-  if (!id) {
-    return null;
-  }
-  const result = await request(`/api/v1/inventory/items/${id}/delete`, {
-    method: "POST",
-    body: JSON.stringify({
-      user_id: getUserId()
-    })
-  });
-  return result?.data || null;
-}
-
 async function bulkAdjustSelectedInventory(deltaQuantity) {
   const visible = getVisibleInventoryItems();
   const visibleIds = new Set(visible.map((i) => String(i.id)));
@@ -4517,12 +4501,10 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
 
   const consumeBtn = $("inventoryBulkConsumeBtn");
   const addBtn = $("inventoryBulkAddBtn");
-  const delBtn = $("inventoryBulkDeleteBtn");
   const clearBtn = $("inventoryBulkClearBtn");
   const selectAll = $("inventorySelectAll");
   if (consumeBtn) consumeBtn.disabled = true;
   if (addBtn) addBtn.disabled = true;
-  if (delBtn) delBtn.disabled = true;
   if (clearBtn) clearBtn.disabled = true;
   if (selectAll) selectAll.disabled = true;
 
@@ -4530,43 +4512,6 @@ async function bulkAdjustSelectedInventory(deltaQuantity) {
     for (const id of selected) {
       const mutation = await adjustInventoryItemQuantity(id, deltaQuantity);
       applyInventoryMutationToCache(mutation, id);
-    }
-    renderInventoryFromCache();
-    await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
-    clearInventorySelection();
-  } finally {
-    syncInventoryBulkBar();
-  }
-}
-
-async function bulkDeleteSelectedInventory() {
-  const visible = getVisibleInventoryItems();
-  const visibleIds = new Set(visible.map((i) => String(i.id)));
-  const selected = Array.from(inventorySelectedIds).filter((id) => visibleIds.has(String(id)));
-  if (selected.length === 0) {
-    return;
-  }
-
-  const ok = confirm(`${t("btn_delete_selected")}: ${selected.length}`);
-  if (!ok) {
-    return;
-  }
-
-  const consumeBtn = $("inventoryBulkConsumeBtn");
-  const addBtn = $("inventoryBulkAddBtn");
-  const delBtn = $("inventoryBulkDeleteBtn");
-  const clearBtn = $("inventoryBulkClearBtn");
-  const selectAll = $("inventorySelectAll");
-  if (consumeBtn) consumeBtn.disabled = true;
-  if (addBtn) addBtn.disabled = true;
-  if (delBtn) delBtn.disabled = true;
-  if (clearBtn) clearBtn.disabled = true;
-  if (selectAll) selectAll.disabled = true;
-
-  try {
-    for (const id of selected) {
-      await deleteInventoryItem(id);
-      applyInventoryMutationToCache({ removed: true }, id);
     }
     renderInventoryFromCache();
     await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
@@ -4607,21 +4552,42 @@ function buildInventoryNode(item) {
   const badgeHost = node.querySelector(".badge");
   badgeHost.replaceWith(statusBadge(item.status));
 
-  const btn = node.querySelector(".consume-btn");
-  btn.textContent = t("btn_consume_1");
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
+  const qtyValueEl = node.querySelector(".qty-value");
+  if (qtyValueEl) {
+    qtyValueEl.textContent = formatQuantityValue(item.quantity);
+  }
+
+  const minusBtn = node.querySelector(".qty-minus-btn");
+  const plusBtn = node.querySelector(".qty-plus-btn");
+  const setAdjustDisabled = (disabled) => {
+    if (minusBtn) minusBtn.disabled = disabled;
+    if (plusBtn) plusBtn.disabled = disabled;
+  };
+
+  const applyItemDelta = async (delta) => {
+    setAdjustDisabled(true);
     try {
-      const mutation = await consumeItem(item.id);
+      const mutation = await adjustInventoryItemQuantity(item.id, delta);
       applyInventoryMutationToCache(mutation, item.id);
       renderInventoryFromCache();
       await Promise.allSettled([loadSummary(), loadShopping(), loadRecipes(), loadNotifications()]);
     } catch (err) {
       setGlobalError(err.message);
     } finally {
-      btn.disabled = false;
+      setAdjustDisabled(false);
     }
-  });
+  };
+
+  if (minusBtn) {
+    minusBtn.addEventListener("click", async () => {
+      await applyItemDelta(-1);
+    });
+  }
+  if (plusBtn) {
+    plusBtn.addEventListener("click", async () => {
+      await applyItemDelta(1);
+    });
+  }
 
   return node;
 }
@@ -5342,16 +5308,6 @@ function bindEvents() {
       event.preventDefault();
       try {
         await bulkAdjustSelectedInventory(-1);
-      } catch (err) {
-        setGlobalError(err?.message || String(err));
-      }
-    });
-  }
-  if ($("inventoryBulkDeleteBtn")) {
-    $("inventoryBulkDeleteBtn").addEventListener("click", async (event) => {
-      event.preventDefault();
-      try {
-        await bulkDeleteSelectedInventory();
       } catch (err) {
         setGlobalError(err?.message || String(err));
       }

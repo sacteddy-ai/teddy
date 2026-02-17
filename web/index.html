@@ -315,9 +315,11 @@
           </label>
           <span id="inventorySelectedCount" class="muted"></span>
           <div class="bulk-actions">
-            <button id="inventoryBulkConsumeBtn" class="btn tiny warn" type="button" data-i18n="btn_consume_1">Consume 1</button>
-            <button id="inventoryBulkAddBtn" class="btn tiny" type="button" data-i18n="btn_add_1">Add 1</button>
-            <button id="inventoryBulkDeleteBtn" class="btn tiny warn" type="button" data-i18n="btn_delete_selected">Delete</button>
+            <div class="qty-stepper bulk-stepper" aria-label="Selected quantity adjust">
+              <button id="inventoryBulkConsumeBtn" class="btn tiny warn" type="button" aria-label="Decrease quantity">-</button>
+              <span class="qty-value">1</span>
+              <button id="inventoryBulkAddBtn" class="btn tiny" type="button" aria-label="Increase quantity">+</button>
+            </div>
             <button id="inventoryBulkClearBtn" class="btn tiny ghost" type="button" data-i18n="btn_clear_selection">Clear</button>
           </div>
         </div>
@@ -368,7 +370,11 @@
       </div>
       <div class="item-side">
         <span class="badge"></span>
-        <button class="btn tiny consume-btn">Consume 1</button>
+        <div class="qty-stepper item-qty-stepper" aria-label="Item quantity adjust">
+          <button class="btn tiny warn qty-minus-btn" type="button" aria-label="Decrease quantity">-</button>
+          <span class="qty-value">0</span>
+          <button class="btn tiny qty-plus-btn" type="button" aria-label="Increase quantity">+</button>
+        </div>
       </div>
     </div>
   </template>
