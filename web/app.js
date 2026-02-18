@@ -1642,9 +1642,9 @@ function parseQuantityOnlyIntent(rawText) {
   }
 
   const patterns = [
-    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?/u,
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u,
-    /^\s*(?:\uADF8\uAC70|\uC774\uAC70|\uC800\uAC70)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u
+    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0)?/u,
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u,
+    /^\s*(?:\uADF8\uAC70|\uC774\uAC70|\uC800\uAC70)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u
   ];
   const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
   for (const seg of segments) {
@@ -1749,7 +1749,7 @@ function parseDraftQuantityIntent(rawText) {
   }
 
   const patterns = [
-    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C|\uAC70\uB4E0)?\s*[.!?~]*$/u
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C|\uAC70\uB4E0)?\s*[.!?~]*$/u
   ];
   for (const pattern of patterns) {
     const m = text.match(pattern);
@@ -1767,6 +1767,49 @@ function parseDraftQuantityIntent(rawText) {
     return { ingredient_phrase: phrase, quantity };
   }
 
+  return null;
+}
+
+function parseDraftRemoveIntent(rawText) {
+  const textRaw = stripLeadingSpeechFiller(rawText);
+  if (!textRaw) {
+    return null;
+  }
+  const text = String(textRaw || "")
+    .replace(/\s*(?:,?\s*(?:\uADF8\uB0E5|\uC880|\uC81C\uBC1C))+\s*[.!?~]*$/u, "")
+    .trim();
+  if (!text) {
+    return null;
+  }
+  const removeVerb = /(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560|remove|delete)/iu;
+  if (!removeVerb.test(text)) {
+    return null;
+  }
+
+  const patterns = [
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uB9CC)?\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)(?:\uC918|\uC8FC\uC138\uC694|\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
+    /^\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)\s*(.+?)\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*[.!?~]*$/u
+  ];
+
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (!m) {
+      continue;
+    }
+    const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim()).replace(/\s*(?:\uB9CC)$/u, "").trim();
+    if (!phrase || isVoiceConnectorOnlyText(phrase)) {
+      continue;
+    }
+    const qtyRaw = String(m[2] || "").trim();
+    let quantity = 1;
+    if (qtyRaw) {
+      const q = parseSpokenCountToken(qtyRaw);
+      if (Number.isFinite(q) && q > 0 && q <= 200) {
+        quantity = q;
+      }
+    }
+    return { ingredient_phrase: phrase, quantity };
+  }
   return null;
 }
 
@@ -4351,6 +4394,68 @@ async function applyVoiceDraftQuantityUpdate(item, quantity, heardText) {
   renderVisionObjectPreview({ skipImageReload: true });
 }
 
+function applyVoiceLocalObjectRemoval(ingredientKey, quantity, removeAll = false) {
+  const key = String(ingredientKey || "").trim();
+  if (!key) {
+    return;
+  }
+  const q = Number(quantity);
+  const removeQty = Number.isFinite(q) && q > 0 ? q : 1;
+  const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache.slice() : [];
+  if (arr.length === 0) {
+    return;
+  }
+
+  if (removeAll) {
+    visionObjectsCache = arr.filter((obj) => String(obj?.ingredient_key || "").trim() !== key);
+    if (visionSelectedObjectId && !getVisionObjectById(visionSelectedObjectId)) {
+      visionSelectedObjectId = "";
+    }
+    renderVisionObjectPreview({ skipImageReload: true });
+    return;
+  }
+
+  let remaining = removeQty;
+  for (let i = 0; i < arr.length && remaining > 0; i += 1) {
+    const obj = arr[i];
+    if (String(obj?.ingredient_key || "").trim() !== key) {
+      continue;
+    }
+    const nowQty = Math.max(1, Number(obj?.quantity || 1));
+    if (nowQty <= remaining) {
+      arr.splice(i, 1);
+      i -= 1;
+      remaining -= nowQty;
+    } else {
+      obj.quantity = nowQty - remaining;
+      remaining = 0;
+    }
+  }
+  visionObjectsCache = arr;
+  if (visionSelectedObjectId && !getVisionObjectById(visionSelectedObjectId)) {
+    visionSelectedObjectId = "";
+  }
+  renderVisionObjectPreview({ skipImageReload: true });
+}
+
+async function applyVoiceDraftRemove(item, quantity, heardText) {
+  const key = String(item?.ingredient_key || "").trim();
+  if (!key) {
+    return;
+  }
+  const q = Number(quantity);
+  const removeQty = Number.isFinite(q) && q > 0 ? q : 1;
+  const currentQty = Math.max(0, Number(item?.quantity || 0));
+  const removeAll = currentQty > 0 && removeQty >= currentQty;
+  const displayName = ingredientLabel(key, item?.ingredient_name || item?.name || key);
+  setRealtimeStatus(tf("voice_heard", { text: heardText }));
+  appendRealtimeLogLine("draft(remove)", `${displayName} -${removeQty}`);
+  await removeCaptureDraftIngredient(key, removeQty, item?.unit || "ea", removeAll);
+  applyVoiceLocalObjectRemoval(key, removeQty, removeAll);
+  setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+  appendVoiceAck(t("voice_ack_applied"));
+}
+
 function addVoiceVisionObjectWithLabel(targetObj, nextObj, label, quantity = 1, relation = "right") {
   const bbox =
     relation === "right" ? buildAdjacentVoiceSpotBbox(targetObj, nextObj) : buildRelativeVoiceSpotBbox(targetObj, relation);
@@ -4515,6 +4620,41 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         setCaptureError(msg);
         setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
       });
+    return;
+  }
+
+  const removeIntent = parseDraftRemoveIntent(text);
+  if (removeIntent?.ingredient_phrase) {
+    const targetItem =
+      findDraftItemByVoicePhrase(removeIntent.ingredient_phrase) ||
+      findVisionObjectByVoicePhrase(removeIntent.ingredient_phrase);
+    const recentTargetAge = Date.now() - Number(realtimeLastVisionTargetAt || 0);
+    const recentTarget =
+      realtimeLastVisionTargetObjectId && recentTargetAge >= 0 && recentTargetAge <= 30000
+        ? getVisionObjectById(realtimeLastVisionTargetObjectId)
+        : null;
+    const chosenTarget = targetItem?.ingredient_key
+      ? targetItem
+      : /^(?:\uC774\uAC70|\uADF8\uAC70|\uC800\uAC70|\uC774\uAC8C|\uADF8\uAC8C|\uC800\uAC8C)$/u.test(
+            String(removeIntent.ingredient_phrase || "").trim()
+          )
+        ? recentTarget
+        : null;
+    if (chosenTarget?.ingredient_key) {
+      realtimeIngestChain = realtimeIngestChain
+        .then(() => applyVoiceDraftRemove(chosenTarget, removeIntent.quantity || 1, text))
+        .catch((err) => {
+          const msg = err?.message || "unknown error";
+          appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+        });
+      return;
+    }
+    appendRealtimeLogLine("label_ignored", text);
+    setRealtimeStatus(t("voice_draft_edit_hint"));
+    appendVoiceAck(t("voice_draft_edit_hint"));
     return;
   }
 
@@ -5359,6 +5499,7 @@ function handleRealtimeEvent(evt) {
         Boolean(parseVisionAnchorOnlyIntent(finalText)) ||
         Boolean(realtimePendingSpatialAddContext && parseVoiceVisionLabelAndQuantity(finalText)) ||
         Boolean(parseVisionStandaloneAddIntent(finalText)) ||
+        Boolean(parseDraftRemoveIntent(finalText)) ||
         Boolean(parseVisionOrdinalQuantityIntent(finalText)) ||
         Boolean(parseVisionOrdinalRelabelIntent(finalText)) ||
         Boolean(parseVisionOrdinalTargetOnlyIntent(finalText)) ||
