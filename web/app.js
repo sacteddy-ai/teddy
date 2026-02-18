@@ -1,4 +1,4 @@
-const $ = (id) => document.getElementById(id);
+﻿const $ = (id) => document.getElementById(id);
 let currentCaptureSessionId = "";
 let liveCameraStream = null;
 let liveCameraTimer = null;
@@ -60,8 +60,8 @@ let ingredientLabelsLoadPromise = null;
 let ingredientLabelsLoadUserId = "";
 
 const INGREDIENT_KEY_LABEL_FALLBACK = {
-  onion: { en: "Onion", ko: "양파" },
-  green_onion: { en: "Green Onion", ko: "대파" }
+  onion: { en: "Onion", ko: "?묓뙆" },
+  green_onion: { en: "Green Onion", ko: "??? }
 };
 
 let inventoryItemsCache = [];
@@ -278,187 +278,187 @@ const I18N = {
     badge_draft: "draft"
   },
   ko: {
-    doc_title: "Teddy 냉장고 대시보드",
+    doc_title: "Teddy ?됱옣怨???쒕낫??,
     hero_eyebrow: "Teddy MVP",
-    hero_title: "냉장고 컨트롤 보드",
-    hero_subtitle: "식재료, 유통기한, 레시피, 장보기까지 한 화면에서 관리하세요.",
+    hero_title: "?됱옣怨?而⑦듃濡?蹂대뱶",
+    hero_subtitle: "?앹옱猷? ?좏넻湲고븳, ?덉떆?? ?λ낫湲곌퉴吏 ???붾㈃?먯꽌 愿由ы븯?몄슂.",
     label_user_id: "User ID",
-    label_language: "언어",
-    easy_mode_label: "쉬운 모드",
-    btn_refresh_all: "전체 새로고침",
-    btn_reload_catalog: "카탈로그 새로고침",
-    remote_api_summary: "원격 API (선택)",
+    label_language: "?몄뼱",
+    easy_mode_label: "?ъ슫 紐⑤뱶",
+    btn_refresh_all: "?꾩껜 ?덈줈怨좎묠",
+    btn_reload_catalog: "移댄깉濡쒓렇 ?덈줈怨좎묠",
+    remote_api_summary: "?먭꺽 API (?좏깮)",
     label_api_base_url: "API Base URL",
-    btn_save: "저장",
-    btn_use_same_origin: "같은 도메인 사용",
+    btn_save: "???,
+    btn_use_same_origin: "媛숈? ?꾨찓???ъ슜",
     remote_api_help_html:
-      "대시보드는 Pages에, API는 다른 곳(예: 터널)에 띄웠을 때 사용하세요. API 서버에서 CORS를 <code>ENABLE_CORS=1</code> 로 켜야 합니다.",
-    capture_storage_help: "인벤토리로 확정할 때 이 보관 방식으로 저장됩니다.",
-    word_none: "없음",
-    word_new_item: "새 항목",
+      "??쒕낫?쒕뒗 Pages?? API???ㅻⅨ 怨??? ?곕꼸)???꾩썱?????ъ슜?섏꽭?? API ?쒕쾭?먯꽌 CORS瑜?<code>ENABLE_CORS=1</code> 濡?耳쒖빞 ?⑸땲??",
+    capture_storage_help: "?몃깽?좊━濡??뺤젙??????蹂닿? 諛⑹떇?쇰줈 ??λ맗?덈떎.",
+    word_none: "?놁쓬",
+    word_new_item: "????ぉ",
     word_source: "\uCD9C\uCC98",
     word_link: "\uB9C1\uD06C",
-    stat_total: "전체",
-    stat_fresh: "신선",
-    stat_expiring_soon: "임박",
-    stat_expired: "만료",
-    add_item_title: "인벤토리 항목 추가",
-    label_ingredient: "식재료",
-    ph_ingredient_example: "우유",
-    label_purchased_date: "구매일",
-    label_storage_type: "보관 방식",
-    storage_refrigerated: "냉장",
-    storage_frozen: "냉동",
-    storage_room: "상온",
-    label_quantity: "수량",
-    label_unit: "단위",
-    label_ocr_raw_text: "OCR 원문 (선택)",
-    ph_ocr_example: "유통기한 2026-03-20",
-    label_product_shelf_life_days: "제품 유통기한(일) (선택)",
-    btn_save_item: "저장",
-    notification_runner_title: "알림 실행",
-    notification_runner_desc: "지금까지 도착해야 할 알림을 모두 발송합니다.",
-    btn_run_due_notifications: "알림 실행",
-    conversational_capture_title: "대화형 캡처",
-    btn_take_photo: "사진 찍기",
-    btn_quick_talk: "말하기",
-    btn_quick_talk_browser: "말하기 (브라우저)",
-    btn_stop_talk: "말하기 중지",
-    quick_capture_hint: "보관 방식을 고르고, 사진을 찍거나 말해보세요. 자동으로 드래프트에 추가해요.",
-    label_session_id: "세션 ID",
-    ph_start_session: "세션 시작",
-    btn_start_session: "세션 시작",
-    label_voice_text_message: "음성/텍스트 메시지",
-    ph_capture_message_example: "왼쪽은 두부, 그 옆은 계란, 아래칸에는 피클과 오이가 있어.",
-    label_vision_items: "비전 아이템(쉼표 구분, 선택)",
-    ph_vision_items_example: "두부, 김치",
-    label_vision_image: "이미지(선택)",
-    label_segmentation: "세그멘테이션",
-    seg_auto: "자동 (설정 시 SAM3 사용)",
-    seg_none: "없음 (전체 이미지)",
-    seg_sam3_http: "sam3_http (엔드포인트 필요)",
-    btn_analyze_image: "이미지 분석",
-    vision_objects_title: "오브젝트 라벨",
-    vision_objects_hint: "스팟을 눌러 선택하세요. '스팟 추가'를 누르고 사진을 탭해 추가한 뒤, 글자나 말로 이름을 고치세요.",
-    btn_edit_label: "수정",
-    btn_edit_label_voice: "말로 수정",
-    btn_remove_one: "빼기",
-    btn_save_label: "저장",
-    btn_cancel_label: "취소",
-    vision_badge_ok: "확신",
-    vision_badge_low: "확인",
-    btn_add_box: "스팟 추가",
-    btn_delete_box: "삭제",
-    live_camera_summary: "라이브 카메라 (실험)",
-    btn_start_camera: "카메라 시작",
-    btn_stop_camera: "카메라 중지",
-    btn_capture_frame: "프레임 캡처",
-    label_facing: "카메라",
-    facing_back: "후면",
-    facing_front: "전면",
-    label_auto_capture: "자동 캡처",
-    auto_off: "끔",
-    realtime_summary: "Realtime 음성 에이전트 (하이브리드)",
-    btn_start_voice: "음성 시작",
-    btn_stop_voice: "음성 중지",
-    realtime_auto_ingest: "내 음성을 자동으로 드래프트에 추가",
-    realtime_share_snapshots: "스냅샷(이미지)도 에이전트에게 공유",
-    label_send_text_optional: "텍스트 보내기 (선택)",
-    ph_realtime_text_example: "지금 있는 재료로 뭘 만들 수 있어?",
-    btn_send_to_agent: "에이전트에게 전송",
-    btn_send_message: "메시지 보내기",
-    btn_undo_last: "이전 변경 취소",
-    btn_finalize_to_inventory: "인벤토리로 확정",
-    capture_draft_title: "캡처 드래프트",
-    pending_confirmations_title: "확인 필요 (세션)",
-    ingredient_review_queue_title: "식재료 확인 큐",
-    btn_reload: "새로고침",
-    review_queue_desc: "모르겠거나 확신이 낮은 단어가 여기에 뜹니다. 한 번만 매핑하면 파서가 학습합니다.",
-    inventory_title: "인벤토리",
-    recipes_title: "레시피 추천",
-    shopping_title: "장보기 추천",
-    btn_shopping_auto_only: "자동주문 후보만",
-    btn_shopping_show_all: "전체보기",
-    btn_create_order_draft: "주문 초안 만들기",
-    notifications_title: "알림",
-    btn_consume_1: "1개 소비",
-    btn_select_all: "전체 선택",
-    btn_clear_selection: "선택 해제",
-    btn_add_1: "1개 추가",
-    btn_delete_selected: "삭제",
-    inventory_selected_count: "선택: {count}개",
-    btn_map_prefix: "매핑:",
-    btn_map_custom: "직접 매핑",
-    btn_ignore: "무시",
-    label_ingredient_key: "식자재 키",
-    label_display_name_optional: "표시 이름(선택)",
-    err_missing_key_map: "이 문장을 매핑하려면 ingredient_key가 필요합니다.",
-    unknown_phrase: "(알 수 없는 문구)",
-    review_meta_line: "사유: {reason} | 횟수: {seen}",
-    empty_inventory: "아직 인벤토리 항목이 없습니다.",
-    empty_recipes: "레시피 추천이 없습니다.",
-    empty_shopping: "장보기 추천이 없습니다.",
-    empty_shopping_auto_only: "자동주문 후보가 없습니다.",
-    empty_notifications: "알림이 없습니다.",
-    empty_capture_none: "캡처 세션을 시작하세요.",
-    empty_capture_no_session: "활성 캡처 세션이 없습니다.",
-    empty_capture_draft: "드래프트가 비어있습니다.",
-    empty_capture_review: "이 세션에 확인할 항목이 없습니다.",
-    empty_review_queue: "확인할 항목이 없습니다.",
-    capture_error_need_text_or_vision: "메시지를 입력하거나 비전 아이템을 넣어주세요.",
-    err_no_capture_session: "확정할 캡처 세션이 없습니다.",
-    err_vision_label_required: "새 박스 이름을 입력한 뒤 확정해주세요.",
-    capture_error_no_confirmed: "아직 확정된 식재료가 없어요. 아래에서 {count}개를 확인해주세요.",
-    capture_error_none_detected: "이 메시지에서 식재료를 찾지 못했어요. 이름을 더 명확히 쓰거나 비전을 사용해보세요.",
-    capture_error_need_confirmation: "아래에서 {count}개를 더 확인해야 합니다.",
-    vision_no_detected: "이 이미지에서 식재료를 찾지 못했어요.",
-    camera_tip_https: "팁: 휴대폰에서 카메라 미리보기는 보통 HTTPS가 필요합니다. 사진 업로드는 동작합니다.",
-    camera_idle: "카메라 대기 중.",
-    voice_idle: "음성 대기 중.",
-    voice_starting: "음성 연결 중...",
-    voice_ready: "준비 됨. 말해보세요.",
-    voice_connected: "음성 연결됨.",
-    voice_connection_state: "음성 연결 상태: {state}",
-    voice_listening: "듣는 중...",
-    voice_processing: "처리 중...",
-    voice_heard: "인식: {text}",
-    voice_start_failed: "음성 시작 실패: {msg}",
-    voice_stopped: "음성 세션 종료됨.",
-    voice_error_prefix: "오류: {msg}",
+    stat_total: "?꾩껜",
+    stat_fresh: "?좎꽑",
+    stat_expiring_soon: "?꾨컯",
+    stat_expired: "留뚮즺",
+    add_item_title: "?몃깽?좊━ ??ぉ 異붽?",
+    label_ingredient: "?앹옱猷?,
+    ph_ingredient_example: "?곗쑀",
+    label_purchased_date: "援щℓ??,
+    label_storage_type: "蹂닿? 諛⑹떇",
+    storage_refrigerated: "?됱옣",
+    storage_frozen: "?됰룞",
+    storage_room: "?곸삩",
+    label_quantity: "?섎웾",
+    label_unit: "?⑥쐞",
+    label_ocr_raw_text: "OCR ?먮Ц (?좏깮)",
+    ph_ocr_example: "?좏넻湲고븳 2026-03-20",
+    label_product_shelf_life_days: "?쒗뭹 ?좏넻湲고븳(?? (?좏깮)",
+    btn_save_item: "???,
+    notification_runner_title: "?뚮┝ ?ㅽ뻾",
+    notification_runner_desc: "吏湲덇퉴吏 ?꾩갑?댁빞 ???뚮┝??紐⑤몢 諛쒖넚?⑸땲??",
+    btn_run_due_notifications: "?뚮┝ ?ㅽ뻾",
+    conversational_capture_title: "??뷀삎 罹≪쿂",
+    btn_take_photo: "?ъ쭊 李띻린",
+    btn_quick_talk: "留먰븯湲?,
+    btn_quick_talk_browser: "留먰븯湲?(釉뚮씪?곗?)",
+    btn_stop_talk: "留먰븯湲?以묒?",
+    quick_capture_hint: "蹂닿? 諛⑹떇??怨좊Ⅴ怨? ?ъ쭊??李띻굅??留먰빐蹂댁꽭?? ?먮룞?쇰줈 ?쒕옒?꾪듃??異붽??댁슂.",
+    label_session_id: "?몄뀡 ID",
+    ph_start_session: "?몄뀡 ?쒖옉",
+    btn_start_session: "?몄뀡 ?쒖옉",
+    label_voice_text_message: "?뚯꽦/?띿뒪??硫붿떆吏",
+    ph_capture_message_example: "?쇱そ? ?먮?, 洹??놁? 怨꾨?, ?꾨옒移몄뿉???쇳겢怨??ㅼ씠媛 ?덉뼱.",
+    label_vision_items: "鍮꾩쟾 ?꾩씠???쇳몴 援щ텇, ?좏깮)",
+    ph_vision_items_example: "?먮?, 源移?,
+    label_vision_image: "?대?吏(?좏깮)",
+    label_segmentation: "?멸렇硫섑뀒?댁뀡",
+    seg_auto: "?먮룞 (?ㅼ젙 ??SAM3 ?ъ슜)",
+    seg_none: "?놁쓬 (?꾩껜 ?대?吏)",
+    seg_sam3_http: "sam3_http (?붾뱶?ъ씤???꾩슂)",
+    btn_analyze_image: "?대?吏 遺꾩꽍",
+    vision_objects_title: "?ㅻ툕?앺듃 ?쇰꺼",
+    vision_objects_hint: "?ㅽ뙚???뚮윭 ?좏깮?섏꽭?? '?ㅽ뙚 異붽?'瑜??꾨Ⅴ怨??ъ쭊????빐 異붽????? 湲?먮굹 留먮줈 ?대쫫??怨좎튂?몄슂.",
+    btn_edit_label: "?섏젙",
+    btn_edit_label_voice: "留먮줈 ?섏젙",
+    btn_remove_one: "鍮쇨린",
+    btn_save_label: "???,
+    btn_cancel_label: "痍⑥냼",
+    vision_badge_ok: "?뺤떊",
+    vision_badge_low: "?뺤씤",
+    btn_add_box: "?ㅽ뙚 異붽?",
+    btn_delete_box: "??젣",
+    live_camera_summary: "?쇱씠釉?移대찓??(?ㅽ뿕)",
+    btn_start_camera: "移대찓???쒖옉",
+    btn_stop_camera: "移대찓??以묒?",
+    btn_capture_frame: "?꾨젅??罹≪쿂",
+    label_facing: "移대찓??,
+    facing_back: "?꾨㈃",
+    facing_front: "?꾨㈃",
+    label_auto_capture: "?먮룞 罹≪쿂",
+    auto_off: "??,
+    realtime_summary: "Realtime ?뚯꽦 ?먯씠?꾪듃 (?섏씠釉뚮━??",
+    btn_start_voice: "?뚯꽦 ?쒖옉",
+    btn_stop_voice: "?뚯꽦 以묒?",
+    realtime_auto_ingest: "???뚯꽦???먮룞?쇰줈 ?쒕옒?꾪듃??異붽?",
+    realtime_share_snapshots: "?ㅻ깄???대?吏)???먯씠?꾪듃?먭쾶 怨듭쑀",
+    label_send_text_optional: "?띿뒪??蹂대궡湲?(?좏깮)",
+    ph_realtime_text_example: "吏湲??덈뒗 ?щ즺濡?萸?留뚮뱾 ???덉뼱?",
+    btn_send_to_agent: "?먯씠?꾪듃?먭쾶 ?꾩넚",
+    btn_send_message: "硫붿떆吏 蹂대궡湲?,
+    btn_undo_last: "?댁쟾 蹂寃?痍⑥냼",
+    btn_finalize_to_inventory: "?몃깽?좊━濡??뺤젙",
+    capture_draft_title: "罹≪쿂 ?쒕옒?꾪듃",
+    pending_confirmations_title: "?뺤씤 ?꾩슂 (?몄뀡)",
+    ingredient_review_queue_title: "?앹옱猷??뺤씤 ??,
+    btn_reload: "?덈줈怨좎묠",
+    review_queue_desc: "紐⑤Ⅴ寃좉굅???뺤떊????? ?⑥뼱媛 ?ш린???밸땲?? ??踰덈쭔 留ㅽ븨?섎㈃ ?뚯꽌媛 ?숈뒿?⑸땲??",
+    inventory_title: "?몃깽?좊━",
+    recipes_title: "?덉떆??異붿쿇",
+    shopping_title: "?λ낫湲?異붿쿇",
+    btn_shopping_auto_only: "?먮룞二쇰Ц ?꾨낫留?,
+    btn_shopping_show_all: "?꾩껜蹂닿린",
+    btn_create_order_draft: "二쇰Ц 珥덉븞 留뚮뱾湲?,
+    notifications_title: "?뚮┝",
+    btn_consume_1: "1媛??뚮퉬",
+    btn_select_all: "?꾩껜 ?좏깮",
+    btn_clear_selection: "?좏깮 ?댁젣",
+    btn_add_1: "1媛?異붽?",
+    btn_delete_selected: "??젣",
+    inventory_selected_count: "?좏깮: {count}媛?,
+    btn_map_prefix: "留ㅽ븨:",
+    btn_map_custom: "吏곸젒 留ㅽ븨",
+    btn_ignore: "臾댁떆",
+    label_ingredient_key: "?앹옄????,
+    label_display_name_optional: "?쒖떆 ?대쫫(?좏깮)",
+    err_missing_key_map: "??臾몄옣??留ㅽ븨?섎젮硫?ingredient_key媛 ?꾩슂?⑸땲??",
+    unknown_phrase: "(?????녿뒗 臾멸뎄)",
+    review_meta_line: "?ъ쑀: {reason} | ?잛닔: {seen}",
+    empty_inventory: "?꾩쭅 ?몃깽?좊━ ??ぉ???놁뒿?덈떎.",
+    empty_recipes: "?덉떆??異붿쿇???놁뒿?덈떎.",
+    empty_shopping: "?λ낫湲?異붿쿇???놁뒿?덈떎.",
+    empty_shopping_auto_only: "?먮룞二쇰Ц ?꾨낫媛 ?놁뒿?덈떎.",
+    empty_notifications: "?뚮┝???놁뒿?덈떎.",
+    empty_capture_none: "罹≪쿂 ?몄뀡???쒖옉?섏꽭??",
+    empty_capture_no_session: "?쒖꽦 罹≪쿂 ?몄뀡???놁뒿?덈떎.",
+    empty_capture_draft: "?쒕옒?꾪듃媛 鍮꾩뼱?덉뒿?덈떎.",
+    empty_capture_review: "???몄뀡???뺤씤????ぉ???놁뒿?덈떎.",
+    empty_review_queue: "?뺤씤????ぉ???놁뒿?덈떎.",
+    capture_error_need_text_or_vision: "硫붿떆吏瑜??낅젰?섍굅??鍮꾩쟾 ?꾩씠?쒖쓣 ?ｌ뼱二쇱꽭??",
+    err_no_capture_session: "?뺤젙??罹≪쿂 ?몄뀡???놁뒿?덈떎.",
+    err_vision_label_required: "??諛뺤뒪 ?대쫫???낅젰?????뺤젙?댁＜?몄슂.",
+    capture_error_no_confirmed: "?꾩쭅 ?뺤젙???앹옱猷뚭? ?놁뼱?? ?꾨옒?먯꽌 {count}媛쒕? ?뺤씤?댁＜?몄슂.",
+    capture_error_none_detected: "??硫붿떆吏?먯꽌 ?앹옱猷뚮? 李얠? 紐삵뻽?댁슂. ?대쫫????紐낇솗???곌굅??鍮꾩쟾???ъ슜?대낫?몄슂.",
+    capture_error_need_confirmation: "?꾨옒?먯꽌 {count}媛쒕? ???뺤씤?댁빞 ?⑸땲??",
+    vision_no_detected: "???대?吏?먯꽌 ?앹옱猷뚮? 李얠? 紐삵뻽?댁슂.",
+    camera_tip_https: "?? ?대??곗뿉??移대찓??誘몃━蹂닿린??蹂댄넻 HTTPS媛 ?꾩슂?⑸땲?? ?ъ쭊 ?낅줈?쒕뒗 ?숈옉?⑸땲??",
+    camera_idle: "移대찓???湲?以?",
+    voice_idle: "?뚯꽦 ?湲?以?",
+    voice_starting: "?뚯꽦 ?곌껐 以?..",
+    voice_ready: "以鍮??? 留먰빐蹂댁꽭??",
+    voice_connected: "?뚯꽦 ?곌껐??",
+    voice_connection_state: "?뚯꽦 ?곌껐 ?곹깭: {state}",
+    voice_listening: "?ｋ뒗 以?..",
+    voice_processing: "泥섎━ 以?..",
+    voice_heard: "?몄떇: {text}",
+    voice_start_failed: "?뚯꽦 ?쒖옉 ?ㅽ뙣: {msg}",
+    voice_stopped: "?뚯꽦 ?몄뀡 醫낅즺??",
+    voice_error_prefix: "?ㅻ쪟: {msg}",
     voice_quota_exceeded:
-      "OpenAI 크레딧/쿼터가 부족해서 음성 인식이 막혔어요. 결제/크레딧을 추가하면 다시 동작합니다. 지금은 브라우저 음성 인식을 사용합니다.",
-    voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
-    voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
+      "OpenAI ?щ젅??荑쇳꽣媛 遺議깊빐???뚯꽦 ?몄떇??留됲삍?댁슂. 寃곗젣/?щ젅?㏃쓣 異붽??섎㈃ ?ㅼ떆 ?숈옉?⑸땲?? 吏湲덉? 釉뚮씪?곗? ?뚯꽦 ?몄떇???ъ슜?⑸땲??",
+    voice_draft_updated: "留먰븳 ?댁슜???쒕옒?꾪듃??諛섏쁺?덉뼱??",
+    voice_draft_updated_ready: "?쒕옒?꾪듃??異붽??덉뼱?? ?뺤씤 ??'?몃깽?좊━濡??뺤젙'???뚮윭二쇱꽭??",
     voice_draft_edit_hint: "\uC774\uB984 \uB610\uB294 \uC218\uB7C9\uB9CC \uB9D0\uC500\uD574 \uC8FC\uC138\uC694.",
     voice_ack_applied: "\uC801\uC6A9\uD588\uC2B5\uB2C8\uB2E4.",
     voice_ack_confirmed: "\uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.",
     voice_ack_undone: "\uB418\uB3CC\uB838\uC2B5\uB2C8\uB2E4.",
-    voice_undo_empty: "되돌릴 변경이 없어요.",
+    voice_undo_empty: "?섎룎由?蹂寃쎌씠 ?놁뼱??",
     voice_ack_target_selected: "{index}\uBC88\uC744 \uC120\uD0DD\uD588\uC2B5\uB2C8\uB2E4. \uC774\uB984 \uB610\uB294 \uC218\uB7C9\uC744 \uB9D0\uC500\uD574 \uC8FC\uC138\uC694.",
-    voice_wait_more: "계속 말하세요.",
-    voice_already_applied: "이미 반영됐어요.",
-    voice_draft_update_failed: "드래프트 반영 실패: {msg}",
-    voice_inventory_updated: "인벤토리 업데이트: {summary}",
-    voice_inventory_no_items: "이 문장에서 식재료를 찾지 못했어요.",
-    voice_inventory_update_failed: "인벤토리 업데이트 실패: {msg}",
-    voice_saved: "인벤토리에 저장했어요.",
-    meta_session_line: "세션 {id} | 상태 {status} | 아이템 {items} | 총 수량 {qty}",
-    meta_inventory_line: "{qty}{unit} | {storage} | 유통기한 {exp} | D{days}",
-    meta_recipe_line: "{chef} | 점수 {score} | 매칭 {match}%",
-    meta_recipe_missing: "부족: {missing}",
-    meta_recipe_missing_unknown: "부족: 재료 분석 중",
-    meta_recipe_link_line: "{provider} | 점수 {score} | 매칭 {match}%",
-    recipe_cluster_links: "링크 {count}개",
-    recipe_title_fallback: "요리",
-    meta_shopping_reasons: "이유: {reasons}",
-    meta_shopping_related: "연관 레시피: {related}",
-    toast_order_draft_created: "주문 초안 생성: {id} ({count}개)",
-    err_order_draft_no_items: "주문 초안으로 만들 항목이 없습니다.",
-    meta_notification_item: "아이템: {id}",
-    meta_notification_scheduled: "예약: {ts}",
-    toast_run_due: "알림 {count}건 발송 완료 ({ts})",
-    toast_reload_catalog: "캐시 {count}개 새로고침 완료 ({ts})",
-    badge_draft: "드래프트"
+    voice_wait_more: "怨꾩냽 留먰븯?몄슂.",
+    voice_already_applied: "?대? 諛섏쁺?먯뼱??",
+    voice_draft_update_failed: "?쒕옒?꾪듃 諛섏쁺 ?ㅽ뙣: {msg}",
+    voice_inventory_updated: "?몃깽?좊━ ?낅뜲?댄듃: {summary}",
+    voice_inventory_no_items: "??臾몄옣?먯꽌 ?앹옱猷뚮? 李얠? 紐삵뻽?댁슂.",
+    voice_inventory_update_failed: "?몃깽?좊━ ?낅뜲?댄듃 ?ㅽ뙣: {msg}",
+    voice_saved: "?몃깽?좊━????ν뻽?댁슂.",
+    meta_session_line: "?몄뀡 {id} | ?곹깭 {status} | ?꾩씠??{items} | 珥??섎웾 {qty}",
+    meta_inventory_line: "{qty}{unit} | {storage} | ?좏넻湲고븳 {exp} | D{days}",
+    meta_recipe_line: "{chef} | ?먯닔 {score} | 留ㅼ묶 {match}%",
+    meta_recipe_missing: "遺議? {missing}",
+    meta_recipe_missing_unknown: "遺議? ?щ즺 遺꾩꽍 以?,
+    meta_recipe_link_line: "{provider} | ?먯닔 {score} | 留ㅼ묶 {match}%",
+    recipe_cluster_links: "留곹겕 {count}媛?,
+    recipe_title_fallback: "?붾━",
+    meta_shopping_reasons: "?댁쑀: {reasons}",
+    meta_shopping_related: "?곌? ?덉떆?? {related}",
+    toast_order_draft_created: "二쇰Ц 珥덉븞 ?앹꽦: {id} ({count}媛?",
+    err_order_draft_no_items: "二쇰Ц 珥덉븞?쇰줈 留뚮뱾 ??ぉ???놁뒿?덈떎.",
+    meta_notification_item: "?꾩씠?? {id}",
+    meta_notification_scheduled: "?덉빟: {ts}",
+    toast_run_due: "?뚮┝ {count}嫄?諛쒖넚 ?꾨즺 ({ts})",
+    toast_reload_catalog: "罹먯떆 {count}媛??덈줈怨좎묠 ?꾨즺 ({ts})",
+    badge_draft: "?쒕옒?꾪듃"
   }
 };
 
@@ -473,13 +473,13 @@ const STATUS_LABELS = {
     resolved: "resolved"
   },
   ko: {
-    fresh: "신선",
-    expiring_soon: "임박",
-    expired: "만료",
-    draft: "드래프트",
-    pending: "대기",
-    ignored: "무시",
-    resolved: "완료"
+    fresh: "?좎꽑",
+    expiring_soon: "?꾨컯",
+    expired: "留뚮즺",
+    draft: "?쒕옒?꾪듃",
+    pending: "?湲?,
+    ignored: "臾댁떆",
+    resolved: "?꾨즺"
   }
 };
 
@@ -1356,9 +1356,12 @@ function parseSpokenCountToken(rawToken) {
   }
 
   const token = base.replace(
-    /(?:\uAC1C|\uAC1C\uC57C|\uAC1C\uC694|\uAC1C\uC608\uC694|\uAC1C\uC785\uB2C8\uB2E4|\uBCD1|\uBCD1\uC774\uC57C|\uBCD1\uC785\uB2C8\uB2E4|\uBCD1\uC774\uC5D0\uC694|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)$/u,
+    /(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)(?:\uC57C|\uC694|\uC608\uC694|\uC785\uB2C8\uB2E4)?$/u,
     ""
   );
+  if (/^(?:\uC774|\uAC00|\uC740|\uB294|\uC744|\uB97C)$/u.test(token || base)) {
+    return null;
+  }
   const n = parseSpokenOrdinalIndexToken(token || base);
   if (!Number.isFinite(n) || n <= 0) {
     return null;
@@ -1367,8 +1370,8 @@ function parseSpokenCountToken(rawToken) {
 }
 
 const VOICE_FOOD_ALIAS_MAP = new Map([
-  ["희망", "피망"],
-  ["방울 토마토", "방울토마토"]
+  ["\uD76C\uB9DD", "\uD53C\uB9DD"],
+  ["\uBC29\uC6B8 \uD1A0\uB9C8\uD1A0", "\uBC29\uC6B8\uD1A0\uB9C8\uD1A0"]
 ]);
 
 function normalizeVoiceFoodAlias(rawValue) {
@@ -1610,12 +1613,12 @@ function isLikelyFragmentaryInventoryText(rawText) {
     return true;
   }
 
-  if (/(?:이랑|랑|하고|와|과|및|그리고|에는|에서|부터|도|만)\s*$/u.test(text)) {
+  if (/(?:?대옉|???섍퀬|?|怨?諛?洹몃━怨??먮뒗|?먯꽌|遺????留?\s*$/u.test(text)) {
     return true;
   }
 
   const hasCommandVerb =
-    /(?:있어|있어요|있습니다|추가|넣|빼|먹|삭제|소비|수량|유통기한|아니라|아니고|말고|변경|수정|해줘|해주세요)\s*[.!?~]*$/u.test(text);
+    /(?:?덉뼱|?덉뼱???덉뒿?덈떎|異붽?|??鍮?癒???젣|?뚮퉬|?섎웾|?좏넻湲고븳|?꾨땲???꾨땲怨?留먭퀬|蹂寃??섏젙|?댁쨾|?댁＜?몄슂)\s*[.!?~]*$/u.test(text);
   if (!hasCommandVerb && text.length <= 16) {
     return true;
   }
@@ -1642,9 +1645,9 @@ function parseQuantityOnlyIntent(rawText) {
   }
 
   const patterns = [
-    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0)?/u,
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u,
-    /^\s*(?:\uADF8\uAC70|\uC774\uAC70|\uC800\uAC70)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u
+    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0)?/u,
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u,
+    /^\s*(?:\uADF8\uAC70|\uC774\uAC70|\uC800\uAC70)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u
   ];
   const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
   for (const seg of segments) {
@@ -1718,7 +1721,7 @@ function parseCorrectionReplacementLabel(rawText) {
         continue;
       }
 
-      // Handle split utterances like "...아니라" then "토마토고".
+      // Handle split utterances like "...?꾨땲?? then "?좊쭏?좉퀬".
       if (/^[\uAC00-\uD7A3A-Za-z0-9]{2,24}\uACE0$/u.test(label)) {
         const base = label.slice(0, -1).trim();
         const baseNorm = normalizeVisionLabelCandidate(base);
@@ -1749,22 +1752,29 @@ function parseDraftQuantityIntent(rawText) {
   }
 
   const patterns = [
-    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C|\uAC70\uB4E0)?\s*[.!?~]*$/u
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0|\uB77C\uB2C8\uAE4C|\uAC70\uB4E0)?\s*[.!?~]*$/u
   ];
-  for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (!m) {
+  const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
+  for (const segment of segments) {
+    const candidate = stripLeadingSpeechFiller(segment);
+    if (!candidate) {
       continue;
     }
-    const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim());
-    if (!phrase) {
-      continue;
+    for (const pattern of patterns) {
+      const m = candidate.match(pattern);
+      if (!m) {
+        continue;
+      }
+      const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim());
+      if (!phrase) {
+        continue;
+      }
+      const quantity = parseSpokenCountToken(m[2]);
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 200) {
+        continue;
+      }
+      return { ingredient_phrase: phrase, quantity };
     }
-    const quantity = parseSpokenCountToken(m[2]);
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 200) {
-      continue;
-    }
-    return { ingredient_phrase: phrase, quantity };
   }
 
   return null;
@@ -1787,28 +1797,35 @@ function parseDraftRemoveIntent(rawText) {
   }
 
   const patterns = [
-    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uB9CC)?\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)(?:\uC918|\uC8FC\uC138\uC694|\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
-    /^\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)\s*(.+?)\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*[.!?~]*$/u
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)?\s*(?:\uB9CC)?\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)(?:\uC918|\uC8FC\uC138\uC694|\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
+    /^\s*(?:\uC0AD\uC81C|\uC9C0\uC6CC|\uC9C0\uC6B0|\uC81C\uAC70|\uBE7C|\uC5C6\uC560)\s*(.+?)\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})?\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)?\s*[.!?~]*$/u
   ];
 
-  for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (!m) {
+  const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
+  for (const segment of segments) {
+    const candidate = stripLeadingSpeechFiller(segment);
+    if (!candidate) {
       continue;
     }
-    const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim()).replace(/\s*(?:\uB9CC)$/u, "").trim();
-    if (!phrase || isVoiceConnectorOnlyText(phrase)) {
-      continue;
-    }
-    const qtyRaw = String(m[2] || "").trim();
-    let quantity = 1;
-    if (qtyRaw) {
-      const q = parseSpokenCountToken(qtyRaw);
-      if (Number.isFinite(q) && q > 0 && q <= 200) {
-        quantity = q;
+    for (const pattern of patterns) {
+      const m = candidate.match(pattern);
+      if (!m) {
+        continue;
       }
+      const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim()).replace(/\s*(?:\uB9CC)$/u, "").trim();
+      if (!phrase || isVoiceConnectorOnlyText(phrase)) {
+        continue;
+      }
+      const qtyRaw = String(m[2] || "").trim();
+      let quantity = 1;
+      if (qtyRaw) {
+        const q = parseSpokenCountToken(qtyRaw);
+        if (Number.isFinite(q) && q > 0 && q <= 200) {
+          quantity = q;
+        }
+      }
+      return { ingredient_phrase: phrase, quantity };
     }
-    return { ingredient_phrase: phrase, quantity };
   }
   return null;
 }
@@ -1847,7 +1864,7 @@ function parseVisionOrdinalQuantityIntent(rawText) {
     quantity = qtyOnly.quantity;
   } else {
     const matches = Array.from(
-      tail.matchAll(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/gu)
+      tail.matchAll(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)/gu)
     );
     if (matches.length > 0) {
       const last = matches[matches.length - 1];
@@ -1864,7 +1881,7 @@ function parseVisionOrdinalQuantityIntent(rawText) {
   if (phraseMatch?.ingredient_phrase) {
     ingredientPhrase = stripTrailingSpeechParticles(String(phraseMatch.ingredient_phrase || "").trim());
   } else {
-    const m = tail.match(/^(.*?)(?:[0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/u);
+    const m = tail.match(/^(.*?)(?:[0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)/u);
     if (m?.[1]) {
       ingredientPhrase = stripTrailingSpeechParticles(String(m[1] || "").trim());
     }
@@ -2048,7 +2065,7 @@ function parseVoiceVisionLabelAndQuantity(rawText) {
     value = value
       .replace(/\s*(?:\uB610|\uB354|\uC815\uB3C4|\uCAB4)\s*$/u, "")
       .replace(
-        /\s*(?:\uD558\uB098|\uD55C|\uB458|\uB450|\uC14B|\uC138|\uB137|\uB124|\uB2E4\uC12F|\uC5EC\uC12F|\uC77C\uACF1|\uC5EC\uB35F|\uC544\uD649|\uC5F4|\d{1,3})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*$/u,
+        /\s*(?:\uD558\uB098|\uD55C|\uB458|\uB450|\uC14B|\uC138|\uB137|\uB124|\uB2E4\uC12F|\uC5EC\uC12F|\uC77C\uACF1|\uC5EC\uB35F|\uC544\uD649|\uC5F4|\d{1,3})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)?\s*$/u,
         ""
       )
       .trim();
@@ -2090,7 +2107,7 @@ function parseVoiceVisionLabelAndQuantity(rawText) {
       /\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB354\uD574|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
       ""
     )
-    .replace(/\s*(?:\uC774|\uAC00)?\s*(?:\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uB2E4)\s*[.!?~]*$/u, "")
+    .replace(/\s*(?:\uC774|\uAC00)?\s*(?:\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uB2E4|\uC788\uACE0|\uC788\uB294\uB370|\uC788\uB2E4\uACE0)\s*[.!?~]*$/u, "")
     .trim();
   if (!candidate) {
     return null;
@@ -2173,7 +2190,7 @@ function parseVisionStandaloneAddIntent(rawText) {
     return null;
   }
   const withQty = text.match(
-    /^\s*([\p{L}\p{N}_ -]{1,24}?)\s+([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
+    /^\s*([\p{L}\p{N}_ -]{1,24}?)\s+([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|\uD3EC\uAE30|\uC904\uAE30|\uC1A1\uC774|\uC54C|\uCABD|\uB9C8\uB9AC|\uC7A5|\uD329|\uC0C1\uC790|\uB9DD|\uB2E8|\uBB36\uC74C|\uAC1C\uC785|\uC778\uBD84|ea)\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
   );
   const withoutQty = text.match(
     /^\s*([\p{L}\p{N}_ -]{1,24}?)\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
@@ -3039,16 +3056,16 @@ function formatInventoryIngestSummary(data) {
 
   const parts = [];
   if (addedText.length > 0) {
-    parts.push(`${currentLang === "ko" ? "추가" : "Added"}: ${addedText.join(", ")}`);
+    parts.push(`${currentLang === "ko" ? "異붽?" : "Added"}: ${addedText.join(", ")}`);
   }
   if (consumedText.length > 0) {
-    parts.push(`${currentLang === "ko" ? "소비" : "Consumed"}: ${consumedText.join(", ")}`);
+    parts.push(`${currentLang === "ko" ? "?뚮퉬" : "Consumed"}: ${consumedText.join(", ")}`);
   }
   if (updatedText.length > 0) {
-    parts.push(`${currentLang === "ko" ? "수정" : "Updated"}: ${updatedText.join(", ")}`);
+    parts.push(`${currentLang === "ko" ? "?섏젙" : "Updated"}: ${updatedText.join(", ")}`);
   }
   if (notFoundText.length > 0) {
-    parts.push(`${currentLang === "ko" ? "없음" : "Not found"}: ${notFoundText.join(", ")}`);
+    parts.push(`${currentLang === "ko" ? "?놁쓬" : "Not found"}: ${notFoundText.join(", ")}`);
   }
 
   return parts.join(" | ").trim();
@@ -3763,7 +3780,7 @@ async function analyzeVisionImage() {
   await analyzeVisionDataUrl(resized, {
     refreshMode: "light",
     realtimeAutoRespond: false,
-    realtimePrompt: "이 이미지에서 보이는 식자재를 간단히 말해줘."
+    realtimePrompt: "???대?吏?먯꽌 蹂댁씠???앹옄?щ? 媛꾨떒??留먰빐以?"
   });
 }
 
@@ -3924,7 +3941,7 @@ async function captureLiveCameraFrame(options = {}) {
     await analyzeVisionDataUrl(dataUrl, {
       refreshMode: "light",
       realtimeAutoRespond: false,
-      realtimePrompt: isAuto ? null : "이 이미지에서 보이는 식자재를 간단히 말해줘."
+      realtimePrompt: isAuto ? null : "???대?吏?먯꽌 蹂댁씠???앹옄?щ? 媛꾨떒??留먰빐以?"
     });
   } catch (err) {
     const msg = err?.message || "Vision analysis failed.";
@@ -4059,10 +4076,10 @@ function maybeShareVisionImageToRealtime(imageDataUrl, options = {}) {
 function buildRealtimePoliteInstructions() {
   if (currentLang === "ko") {
     return (
-      "당신은 Teddy 냉장고 음성 비서입니다. 사용자의 명령만 처리하세요. " +
-      "항상 한국어 존댓말로, 짧은 한 문장으로만 답하세요. " +
-      "불필요한 설명, 감탄, 제안, 잡담을 하지 마세요. " +
-      "모호할 때만 한 문장으로 짧게 되물으세요."
+      "?뱀떊? Teddy ?됱옣怨??뚯꽦 鍮꾩꽌?낅땲?? ?ъ슜?먯쓽 紐낅졊留?泥섎━?섏꽭?? " +
+      "??긽 ?쒓뎅??議대뙎留먮줈, 吏㏃? ??臾몄옣?쇰줈留??듯븯?몄슂. " +
+      "遺덊븘?뷀븳 ?ㅻ챸, 媛먰깂, ?쒖븞, ?〓떞???섏? 留덉꽭?? " +
+      "紐⑦샇???뚮쭔 ??臾몄옣?쇰줈 吏㏐쾶 ?섎Ъ?쇱꽭??"
     );
   }
   return (
@@ -4596,7 +4613,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
 
     const normalized = text.toLowerCase();
     const deleteIntent =
-      /\b(remove|delete)\b/i.test(normalized) || /삭제|지워|빼|제거|없애|버려/.test(normalized);
+      /\b(remove|delete)\b/i.test(normalized) || /??젣|吏??鍮??쒓굅|?놁븷|踰꾨젮/.test(normalized);
 
     setRealtimeStatus(tf("voice_heard", { text }));
     appendRealtimeLogLine("draft(edit)", text);
@@ -5563,7 +5580,7 @@ async function applyPendingVisionEditsToDraftBeforeFinalize() {
 
   const placeholder = String(t("word_new_item") || "").trim();
   const placeholderEn = "New item";
-  const placeholderKo = "새 항목";
+  const placeholderKo = "????ぉ";
   const pending = [];
 
   const nodes = Array.from(list.querySelectorAll(".vision-object"));
@@ -5699,7 +5716,7 @@ function parseEditableQuantity(value) {
 function confirmDeleteByMinusSingle() {
   const msg =
     currentLang === "ko"
-      ? "수량이 1이라 이 항목이 삭제됩니다. 삭제하시겠습니까?"
+      ? "?섎웾??1?대씪 ????ぉ????젣?⑸땲?? ??젣?섏떆寃좎뒿?덇퉴?"
       : "Quantity is 1, so this item will be removed. Remove it?";
   return confirm(msg);
 }
@@ -5708,7 +5725,7 @@ function confirmDeleteByMinusBulk(removeCount) {
   const count = Math.max(1, Number(removeCount || 0));
   const msg =
     currentLang === "ko"
-      ? `선택한 항목 중 ${count}개가 삭제됩니다. 계속하시겠습니까?`
+      ? `?좏깮????ぉ 以?${count}媛쒓? ??젣?⑸땲?? 怨꾩냽?섏떆寃좎뒿?덇퉴?`
       : `${count} selected item(s) will be removed. Continue?`;
   return confirm(msg);
 }
@@ -6176,13 +6193,13 @@ function recipeProviderLabel(provider) {
   const key = normalizeRecipeProvider(provider);
   if (currentLang === "ko") {
     const labelsKo = {
-      youtube: "유튜브",
-      naver_blog: "네이버 블로그",
-      naver_web: "네이버 웹",
-      google: "구글",
-      recipe_site: "레시피 사이트",
-      seed: "기본 레시피",
-      other: "기타"
+      youtube: "?좏뒠釉?,
+      naver_blog: "?ㅼ씠踰?釉붾줈洹?,
+      naver_web: "?ㅼ씠踰???,
+      google: "援ш?",
+      recipe_site: "?덉떆???ъ씠??,
+      seed: "湲곕낯 ?덉떆??,
+      other: "湲고?"
     };
     return labelsKo[key] || labelsKo.other;
   }
@@ -6214,36 +6231,36 @@ const RECIPE_DISH_STOPWORDS = new Set([
   "food",
   "dish",
   "video",
-  "레시피",
-  "요리",
-  "만들기",
-  "만드는법",
-  "만드는",
-  "초간단",
-  "간단",
-  "쉬운",
-  "홈쿡",
-  "자취",
-  "브이로그"
+  "?덉떆??,
+  "?붾━",
+  "留뚮뱾湲?,
+  "留뚮뱶?붾쾿",
+  "留뚮뱶??,
+  "珥덇컙??,
+  "媛꾨떒",
+  "?ъ슫",
+  "?덉에",
+  "?먯랬",
+  "釉뚯씠濡쒓렇"
 ]);
 
 const RECIPE_DISH_STYLE_PATTERNS = [
-  { key: "덮밥", patterns: [/덮밥/u, /\bdonburi\b/i, /\brice bowl\b/i] },
-  { key: "찜", patterns: [/찜/u, /\bsteam(?:ed)?\b/i, /\bsteamed\b/i] },
-  { key: "볶음", patterns: [/볶음/u, /\b볶\b/u, /\bstir[\s-]?fry\b/i] },
-  { key: "조림", patterns: [/조림/u, /\bbraise(?:d)?\b/i, /\bsimmer(?:ed)?\b/i] },
-  { key: "구이", patterns: [/구이/u, /\bgrill(?:ed)?\b/i, /\broast(?:ed)?\b/i] },
-  { key: "찌개", patterns: [/찌개/u, /\bstew\b/i] },
-  { key: "국", patterns: [/(^|[^가-힣])국($|[^가-힣])/u, /\bsoup\b/i] },
-  { key: "탕", patterns: [/탕/u] },
-  { key: "전", patterns: [/(^|[^가-힣])전($|[^가-힣])/u, /\bpancake\b/i, /\bfritter\b/i] },
-  { key: "무침", patterns: [/무침/u] },
-  { key: "샐러드", patterns: [/샐러드/u, /\bsalad\b/i] },
-  { key: "볶음밥", patterns: [/볶음밥/u, /\bfried rice\b/i] },
-  { key: "파스타", patterns: [/파스타/u, /\bpasta\b/i] },
-  { key: "라면", patterns: [/라면/u, /\bramen\b/i, /\bnoodle\b/i] },
-  { key: "카레", patterns: [/카레/u, /\bcurry\b/i] },
-  { key: "김밥", patterns: [/김밥/u, /\bgimbap\b/i, /\bkimbap\b/i] }
+  { key: "??갈", patterns: [/??갈/u, /\bdonburi\b/i, /\brice bowl\b/i] },
+  { key: "李?, patterns: [/李?u, /\bsteam(?:ed)?\b/i, /\bsteamed\b/i] },
+  { key: "蹂띠쓬", patterns: [/蹂띠쓬/u, /\b蹂?b/u, /\bstir[\s-]?fry\b/i] },
+  { key: "議곕┝", patterns: [/議곕┝/u, /\bbraise(?:d)?\b/i, /\bsimmer(?:ed)?\b/i] },
+  { key: "援ъ씠", patterns: [/援ъ씠/u, /\bgrill(?:ed)?\b/i, /\broast(?:ed)?\b/i] },
+  { key: "李뚭컻", patterns: [/李뚭컻/u, /\bstew\b/i] },
+  { key: "援?, patterns: [/(^|[^媛-??)援?$|[^媛-??)/u, /\bsoup\b/i] },
+  { key: "??, patterns: [/??u] },
+  { key: "??, patterns: [/(^|[^媛-??)??$|[^媛-??)/u, /\bpancake\b/i, /\bfritter\b/i] },
+  { key: "臾댁묠", patterns: [/臾댁묠/u] },
+  { key: "?먮윭??, patterns: [/?먮윭??u, /\bsalad\b/i] },
+  { key: "蹂띠쓬諛?, patterns: [/蹂띠쓬諛?u, /\bfried rice\b/i] },
+  { key: "?뚯뒪?", patterns: [/?뚯뒪?/u, /\bpasta\b/i] },
+  { key: "?쇰㈃", patterns: [/?쇰㈃/u, /\bramen\b/i, /\bnoodle\b/i] },
+  { key: "移대젅", patterns: [/移대젅/u, /\bcurry\b/i] },
+  { key: "源諛?, patterns: [/源諛?u, /\bgimbap\b/i, /\bkimbap\b/i] }
 ];
 
 function decodeRecipeHtmlEntities(value) {
@@ -6434,7 +6451,7 @@ function buildRecipeDishClusters(payload) {
 function formatRecipeScore(value) {
   const n = Number(value);
   const score = Number.isFinite(n) ? Math.round(n) : 0;
-  return currentLang === "ko" ? `${score}점` : `${score}`;
+  return currentLang === "ko" ? `${score}?? : `${score}`;
 }
 
 function formatRecipeMatchPercent(value) {
@@ -7755,3 +7772,4 @@ function init() {
 }
 
 window.addEventListener("DOMContentLoaded", init);
+
