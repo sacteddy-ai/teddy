@@ -18,6 +18,8 @@ let realtimeRecentSpeechTexts = [];
 let realtimeLastVisionRelabelAt = 0;
 let realtimeLastVisionTargetObjectId = "";
 let realtimeLastVisionTargetAt = 0;
+let realtimePendingSpatialAddContext = null; // { anchor_phrase, relation }
+let realtimePendingSpatialAddAt = 0;
 let realtimePendingInventoryText = "";
 let realtimePendingInventoryAt = 0;
 let realtimeLastAutoIngestKey = "";
@@ -1134,6 +1136,7 @@ function extractVisionLabelFromSpeech(rawText) {
 
   const trailingPatterns = [
     /\s*(?:\uC774\uC57C|\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)\s*[.!?~]*$/u,
+    /\s*(?:\uC774|\uAC00)?\s*(?:\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uB2E4)\s*[.!?~]*$/u,
     /\s*(?:\uB77C\uACE0|\uB77C\uAD6C)\s*(?:\uC785\uB825(?:\uD574\uC918)?|\uC800\uC7A5(?:\uD574\uC918)?|\uB4F1\uB85D(?:\uD574\uC918)?|\uC218\uC815(?:\uD574\uC918)?|\uBC14\uAFD4(?:\uC918)?|\uD574\uC918)?\s*[.!?~]*$/u,
     /\s*(?:\uB85C|\uC73C\uB85C)\s*(?:\uC218\uC815|\uBCC0\uACBD|\uBC14\uAFD4)(?:\uC918|\uC8FC\uC138\uC694|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
   ];
@@ -1624,6 +1627,11 @@ function clearRealtimePendingInventoryText() {
   realtimePendingInventoryAt = 0;
 }
 
+function clearRealtimePendingSpatialAddContext() {
+  realtimePendingSpatialAddContext = null;
+  realtimePendingSpatialAddAt = 0;
+}
+
 function parseQuantityOnlyIntent(rawText) {
   const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
@@ -1952,17 +1960,81 @@ function findVisionObjectByVoicePhrase(ingredientPhrase) {
   return bestScore >= 55 ? best : null;
 }
 
-function parseVisionAddByAnchorPhraseIntent(rawText) {
+function normalizeVoiceSpatialRelation(raw) {
+  const token = String(raw || "").trim();
+  if (!token) {
+    return "right";
+  }
+  if (/\uC67C\uCABD|\uC67C\uD3B8/u.test(token)) {
+    return "left";
+  }
+  if (/\uC624\uB978\uCABD|\uC624\uB978\uD3B8|\uC606/u.test(token)) {
+    return "right";
+  }
+  if (/\uC704|\uC717/u.test(token)) {
+    return "above";
+  }
+  if (/\uC544\uB798|\uBC11|\uC544\uB7AB/u.test(token)) {
+    return "below";
+  }
+  return "right";
+}
+
+function parseVoiceVisionLabelAndQuantity(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text || isVoiceConnectorOnlyText(text) || isAffirmationOnlySpeech(text)) {
+    return null;
+  }
+  if (
+    /(?:\uC67C\uCABD|\uC624\uB978\uCABD|\uC606|\uC704|\uC544\uB798|\uBC11)/u.test(text) &&
+    !/(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text)
+  ) {
+    return null;
+  }
+
+  const qtyIntent = parseDraftQuantityIntent(text);
+  if (qtyIntent?.ingredient_phrase && qtyIntent?.quantity) {
+    const normalizedLabel = normalizeVisionLabelCandidate(
+      stripTrailingSpeechParticles(String(qtyIntent.ingredient_phrase || "").trim())
+    );
+    if (normalizedLabel) {
+      return { label: normalizedLabel, quantity: qtyIntent.quantity };
+    }
+  }
+
+  let quantity = 1;
+  const qOnly = parseQuantityOnlyIntent(text);
+  if (qOnly?.quantity) {
+    quantity = qOnly.quantity;
+  }
+
+  let candidate = String(text || "").trim();
+  candidate = candidate
+    .replace(
+      /\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB354\uD574|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
+      ""
+    )
+    .replace(/\s*(?:\uC774|\uAC00)?\s*(?:\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC788\uB2E4)\s*[.!?~]*$/u, "")
+    .trim();
+  if (!candidate) {
+    return null;
+  }
+  const normalizedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(candidate) || candidate);
+  if (!normalizedLabel) {
+    return null;
+  }
+  return { label: normalizedLabel, quantity };
+}
+
+function parseVisionSpatialAnchorIntent(rawText) {
   let text = stripLeadingSpeechFiller(rawText);
   if (!text) {
     return null;
   }
-  text = text.replace(/^(?:\uADF8|\uC800|\uC774)\s*(?:\uC704|\uC544\uB798|\uC606)(?:\uCABD)?(?:\uC5D0|\uC73C\uB85C)?\s*/u, "");
-  if (!/(?:\uCD94\uAC00|\uB123\uC5B4|\uB354\uD574|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text)) {
-    return null;
-  }
-
-  const relationMatch = text.match(/^\s*(.+?)\s*(\uC606|\uC704|\uC544\uB798)(?:\uCABD)?(?:\uC5D0|\uC73C\uB85C)?\s+(.+)$/u);
+  text = text.replace(/^(?:\uADF8\uB9AC\uACE0|\uADF8\uB7FC|\uADF8\uB7F0\uB370|\uADFC\uB370)\s*/u, "").trim();
+  const relationMatch = text.match(
+    /^\s*(.+?)\s*(\uC606|\uC606\uCABD|\uC67C\uCABD|\uC67C\uD3B8|\uC624\uB978\uCABD|\uC624\uB978\uD3B8|\uC704|\uC717\uCABD|\uC544\uB798|\uC544\uB7AB\uCABD|\uBC11|\uBC11\uCABD)(?:\uC5D0|\uC73C\uB85C)?\s*(.*)$/u
+  );
   if (!relationMatch) {
     return null;
   }
@@ -1971,43 +2043,51 @@ function parseVisionAddByAnchorPhraseIntent(rawText) {
       .replace(/^(?:\uADF8|\uC800|\uC774)\s+/u, "")
       .trim()
   );
-  const relationRaw = String(relationMatch[2] || "").trim();
+  const relation = normalizeVoiceSpatialRelation(relationMatch[2]);
   const tail = String(relationMatch[3] || "").trim();
-  if (!anchorPhrase || !tail) {
+  if (!anchorPhrase) {
     return null;
   }
+  return { anchor_phrase: anchorPhrase, relation, tail };
+}
 
-  let quantity = 1;
-  const qtyMatch = tail.match(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/u);
-  if (qtyMatch?.[1]) {
-    const parsed = parseSpokenCountToken(qtyMatch[1]);
-    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 200) {
-      quantity = parsed;
-    }
-  }
-
-  let label = "";
-  const addVerbMatch = tail.match(
-    /([0-9A-Za-z\uAC00-\uD7A3][0-9A-Za-z\uAC00-\uD7A3\s_-]{0,23})\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u
-  );
-  if (addVerbMatch?.[1]) {
-    label = String(addVerbMatch[1] || "").trim();
-  }
-  if (!label) {
-    const leadMatch = tail.match(/^([0-9A-Za-z\uAC00-\uD7A3][0-9A-Za-z\uAC00-\uD7A3\s_-]{0,23})\s*(?:\uC774|\uAC00)?\s*(?:\uC788|,|\.|$)/u);
-    if (leadMatch?.[1]) {
-      label = String(leadMatch[1] || "").trim();
-    }
-  }
-  if (!label) {
-    label = extractVisionLabelFromSpeech(tail) || tail;
-  }
-  label = normalizeVisionLabelCandidate(stripTrailingSpeechParticles(label));
-  if (!label) {
+function parseVisionAddByAnchorPhraseIntent(rawText) {
+  const parsed = parseVisionSpatialAnchorIntent(rawText);
+  if (!parsed) {
     return null;
   }
-  const relation = relationRaw === "\uC704" ? "above" : relationRaw === "\uC544\uB798" ? "below" : "right";
-  return { anchor_phrase: anchorPhrase, label, relation, quantity };
+  const labelPayload = parseVoiceVisionLabelAndQuantity(parsed.tail);
+  if (!labelPayload?.label) {
+    return null;
+  }
+  return {
+    anchor_phrase: parsed.anchor_phrase,
+    relation: parsed.relation,
+    label: labelPayload.label,
+    quantity: labelPayload.quantity
+  };
+}
+
+function parseVisionAnchorOnlyIntent(rawText) {
+  const parsed = parseVisionSpatialAnchorIntent(rawText);
+  if (!parsed) {
+    return null;
+  }
+  if (!parsed.tail) {
+    return { anchor_phrase: parsed.anchor_phrase, relation: parsed.relation };
+  }
+  if (parseVoiceVisionLabelAndQuantity(parsed.tail)) {
+    return null;
+  }
+  if (
+    isVoiceConnectorOnlyText(parsed.tail) ||
+    /^(?:\uCD94\uAC00|\uCD94\uAC00\uD574|\uCD94\uAC00\uD574\uC918|\uCD94\uAC00\uD574\uC8FC\uC138\uC694|\uB123\uC5B4|\uB123\uC5B4\uC918|\uB123\uC5B4\uC8FC\uC138\uC694)$/u.test(
+      parsed.tail
+    )
+  ) {
+    return { anchor_phrase: parsed.anchor_phrase, relation: parsed.relation };
+  }
+  return null;
 }
 
 function parseVisionStandaloneAddIntent(rawText) {
@@ -2595,7 +2675,10 @@ function buildRelativeVoiceSpotBbox(referenceObj, relation = "right") {
   let centerX = center.x + refW * 1.05;
   let centerY = center.y;
 
-  if (relation === "above") {
+  if (relation === "left") {
+    centerX = center.x - refW * 1.05;
+    centerY = center.y;
+  } else if (relation === "above") {
     centerX = center.x;
     centerY = center.y - refH * 1.15;
   } else if (relation === "below") {
@@ -4154,6 +4237,7 @@ function stopRealtimeVoice() {
   realtimeLastVisionRelabelAt = 0;
   realtimeLastVisionTargetObjectId = "";
   realtimeLastVisionTargetAt = 0;
+  clearRealtimePendingSpatialAddContext();
   clearRealtimePendingInventoryText();
   realtimeLastAutoIngestKey = "";
   realtimeLastAutoIngestAt = 0;
@@ -4253,6 +4337,67 @@ function addVoiceVisionObjectWithLabel(targetObj, nextObj, label, quantity = 1, 
   return addedObj;
 }
 
+function resolveVisionAnchorObject(anchorPhrase) {
+  const phrase = String(anchorPhrase || "").trim();
+  if (!phrase) {
+    return null;
+  }
+  const ordinalMatch = phrase.match(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)/u);
+  if (ordinalMatch?.[1]) {
+    const idx = parseSpokenOrdinalIndexToken(ordinalMatch[1]);
+    if (Number.isFinite(idx) && idx > 0) {
+      const byOrdinal = getVisionObjectByOrdinal(idx);
+      if (byOrdinal?.id) {
+        return byOrdinal;
+      }
+    }
+  }
+  return findVisionObjectByVoicePhrase(phrase);
+}
+
+function queueVoiceSpatialAdd(anchorPhrase, relation, label, quantity, heardText) {
+  const targetObj = resolveVisionAnchorObject(anchorPhrase);
+  if (!targetObj?.id) {
+    const msg = `target spot for "${anchorPhrase}" not found`;
+    appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+    setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+    return false;
+  }
+
+  const anchorOrdinal = getVisionObjectOrdinalById(targetObj.id);
+  const nextObj = relation === "right" && Number.isFinite(anchorOrdinal) ? getVisionObjectByOrdinal(anchorOrdinal + 1) : null;
+  const addedObj = addVoiceVisionObjectWithLabel(targetObj, nextObj, label, quantity, relation);
+  setRealtimeStatus(tf("voice_heard", { text: heardText }));
+  appendRealtimeLogLine("label_add", `${anchorPhrase} ${relation}: ${label} x${quantity}`);
+  realtimeIngestChain = realtimeIngestChain
+    .then(() =>
+      replaceVisionObjectLabel(addedObj.id, label, {
+        quantity: quantity || 1,
+        unit: "ea"
+      })
+    )
+    .then(() => {
+      realtimeLastVisionRelabelAt = Date.now();
+      realtimeLastVisionTargetObjectId = addedObj.id;
+      realtimeLastVisionTargetAt = Date.now();
+      setRealtimeStatus(t("voice_draft_updated"));
+      appendVoiceAck(t("voice_ack_applied"));
+    })
+    .catch((err) => {
+      const msg = err?.message || "unknown error";
+      visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== String(addedObj.id || ""));
+      if (visionSelectedObjectId === addedObj.id) {
+        visionSelectedObjectId = "";
+      }
+      renderVisionObjectPreview({ skipImageReload: true });
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setGlobalError(msg);
+      setCaptureError(msg);
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+    });
+  return true;
+}
+
 function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   const text = String(finalText || "").trim();
   if (!text) {
@@ -4282,6 +4427,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         appendVoiceAck(ack);
         draftVoiceEditTarget = null;
         visionRelabelTargetId = "";
+        clearRealtimePendingSpatialAddContext();
         closeVisionInlineEditor();
       })
       .catch((err) => {
@@ -4338,6 +4484,52 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     return;
   }
 
+  if (realtimePendingSpatialAddContext && now - Number(realtimePendingSpatialAddAt || 0) > 30000) {
+    clearRealtimePendingSpatialAddContext();
+  }
+
+  const addByAnchorPhrase = parseVisionAddByAnchorPhraseIntent(text);
+  if (addByAnchorPhrase) {
+    clearRealtimePendingSpatialAddContext();
+    if (queueVoiceSpatialAdd(
+      addByAnchorPhrase.anchor_phrase,
+      addByAnchorPhrase.relation,
+      addByAnchorPhrase.label,
+      addByAnchorPhrase.quantity || 1,
+      text
+    )) {
+      return;
+    }
+  }
+
+  const anchorOnly = parseVisionAnchorOnlyIntent(text);
+  if (anchorOnly) {
+    realtimePendingSpatialAddContext = {
+      anchor_phrase: anchorOnly.anchor_phrase,
+      relation: anchorOnly.relation
+    };
+    realtimePendingSpatialAddAt = now;
+    appendRealtimeLogLine("label_target", `${anchorOnly.anchor_phrase} ${anchorOnly.relation}`);
+    setRealtimeStatus(t("voice_draft_edit_hint"));
+    appendVoiceAck(t("voice_draft_edit_hint"));
+    return;
+  }
+
+  if (realtimePendingSpatialAddContext) {
+    const pendingLabel = parseVoiceVisionLabelAndQuantity(text);
+    if (pendingLabel?.label) {
+      const ctx = realtimePendingSpatialAddContext;
+      clearRealtimePendingSpatialAddContext();
+      if (queueVoiceSpatialAdd(ctx.anchor_phrase, ctx.relation, pendingLabel.label, pendingLabel.quantity || 1, text)) {
+        return;
+      }
+    } else if (/(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text)) {
+      setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
+      return;
+    }
+  }
+
   const draftQtyByPhrase = parseDraftQuantityIntent(text);
   const hasExplicitAddVerb = /(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text);
   if (!hasExplicitAddVerb && draftQtyByPhrase?.quantity && draftQtyByPhrase?.ingredient_phrase) {
@@ -4356,57 +4548,6 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         });
       return;
     }
-  }
-
-  const addByAnchorPhrase = parseVisionAddByAnchorPhraseIntent(text);
-  if (addByAnchorPhrase) {
-    const targetObj = findVisionObjectByVoicePhrase(addByAnchorPhrase.anchor_phrase);
-    if (!targetObj?.id) {
-      const msg = `target spot for "${addByAnchorPhrase.anchor_phrase}" not found`;
-      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
-      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
-      return;
-    }
-    const nextObj = addByAnchorPhrase.relation === "right" ? getVisionObjectByOrdinal(getVisionObjectOrdinalById(targetObj.id) + 1) : null;
-    const addedObj = addVoiceVisionObjectWithLabel(
-      targetObj,
-      nextObj,
-      addByAnchorPhrase.label,
-      addByAnchorPhrase.quantity,
-      addByAnchorPhrase.relation
-    );
-    setRealtimeStatus(tf("voice_heard", { text }));
-    appendRealtimeLogLine(
-      "label_add",
-      `${addByAnchorPhrase.anchor_phrase} ${addByAnchorPhrase.relation}: ${addByAnchorPhrase.label} x${addByAnchorPhrase.quantity}`
-    );
-    realtimeIngestChain = realtimeIngestChain
-      .then(() =>
-        replaceVisionObjectLabel(addedObj.id, addByAnchorPhrase.label, {
-          quantity: addByAnchorPhrase.quantity || 1,
-          unit: "ea"
-        })
-      )
-      .then(() => {
-        realtimeLastVisionRelabelAt = Date.now();
-        realtimeLastVisionTargetObjectId = addedObj.id;
-        realtimeLastVisionTargetAt = Date.now();
-        setRealtimeStatus(t("voice_draft_updated"));
-        appendVoiceAck(t("voice_ack_applied"));
-      })
-      .catch((err) => {
-        const msg = err?.message || "unknown error";
-        visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== String(addedObj.id || ""));
-        if (visionSelectedObjectId === addedObj.id) {
-          visionSelectedObjectId = "";
-        }
-        renderVisionObjectPreview({ skipImageReload: true });
-        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
-        setGlobalError(msg);
-        setCaptureError(msg);
-        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
-      });
-    return;
   }
 
   const standaloneAdd = parseVisionStandaloneAddIntent(text);
@@ -5181,6 +5322,8 @@ function handleRealtimeEvent(evt) {
       const commandLikeSpeech =
         Boolean(parseVisionAddAdjacentIntent(finalText)) ||
         Boolean(parseVisionAddByAnchorPhraseIntent(finalText)) ||
+        Boolean(parseVisionAnchorOnlyIntent(finalText)) ||
+        Boolean(realtimePendingSpatialAddContext && parseVoiceVisionLabelAndQuantity(finalText)) ||
         Boolean(parseVisionStandaloneAddIntent(finalText)) ||
         Boolean(parseVisionOrdinalQuantityIntent(finalText)) ||
         Boolean(parseVisionOrdinalRelabelIntent(finalText)) ||
