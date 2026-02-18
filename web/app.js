@@ -4342,7 +4342,10 @@ function parseEditableQuantity(value) {
   if (!Number.isFinite(n) || n < 0) {
     return null;
   }
-  return Math.round(n * 100) / 100;
+  if (!Number.isInteger(n)) {
+    return null;
+  }
+  return n;
 }
 
 function confirmDeleteByMinusSingle() {
@@ -5710,7 +5713,7 @@ async function createItemFromForm(event) {
     ingredient_name: String(formData.get("ingredient_name") || "").trim(),
     purchased_at: String(formData.get("purchased_at") || "").trim(),
     storage_type: String(formData.get("storage_type") || "refrigerated"),
-    quantity: parseNumberOrNull(formData.get("quantity")),
+    quantity: Math.max(1, Math.round(parseNumberOrNull(formData.get("quantity")) || 1)),
     unit: String(formData.get("unit") || "ea").trim(),
     ocr_raw_text: String(formData.get("ocr_raw_text") || "").trim() || null,
     product_shelf_life_days: parseNumberOrNull(formData.get("product_shelf_life_days"))

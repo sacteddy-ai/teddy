@@ -878,10 +878,18 @@ textarea {
   width: 58px;
   min-width: 58px;
   height: 28px;
+  appearance: textfield;
+  -moz-appearance: textfield;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0 8px;
   background: #fff;
+}
+
+.item-qty-stepper .qty-input::-webkit-outer-spin-button,
+.item-qty-stepper .qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .item-qty-stepper .qty-input:focus {

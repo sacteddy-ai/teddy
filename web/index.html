@@ -99,7 +99,7 @@
           <div class="inline-fields">
             <label>
               <span data-i18n="label_quantity">Quantity</span>
-              <input name="quantity" type="number" min="0.01" step="0.01" value="1">
+              <input name="quantity" type="number" min="1" step="1" inputmode="numeric" value="1">
             </label>
             <label>
               <span data-i18n="label_unit">Unit</span>
@@ -403,8 +403,8 @@
             class="qty-input"
             type="number"
             min="0"
-            step="0.01"
-            inputmode="decimal"
+            step="1"
+            inputmode="numeric"
             value="0"
             aria-label="Set quantity">
           <button class="btn tiny qty-plus-btn" type="button" aria-label="Increase quantity">+</button>
