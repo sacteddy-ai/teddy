@@ -25,6 +25,7 @@ let realtimeLastAutoIngestAt = 0;
 let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
+let realtimeLastResponseCreateAt = 0;
 
 let visionLastImageDataUrl = "";
 let visionObjectsCache = [];
@@ -3189,6 +3190,26 @@ function realtimeSendEvent(evt) {
   realtimeDataChannel.send(JSON.stringify(evt));
 }
 
+function requestRealtimeAssistantResponse(options = {}) {
+  if (!isRealtimeConnected() || realtimeQuotaBlocked) {
+    return false;
+  }
+  const force = Boolean(options?.force);
+  const minIntervalMs = Number(options?.minIntervalMs);
+  const throttleMs = Number.isFinite(minIntervalMs) ? Math.max(0, Math.round(minIntervalMs)) : 700;
+  const now = Date.now();
+  if (!force && now - Number(realtimeLastResponseCreateAt || 0) < throttleMs) {
+    return false;
+  }
+  try {
+    realtimeSendEvent({ type: "response.create" });
+    realtimeLastResponseCreateAt = now;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function maybeShareVisionImageToRealtime(imageDataUrl, options = {}) {
   try {
     if (!isRealtimeConnected()) {
@@ -3497,6 +3518,7 @@ function stopRealtimeVoice() {
   clearRealtimePendingInventoryText();
   realtimeLastAutoIngestKey = "";
   realtimeLastAutoIngestAt = 0;
+  realtimeLastResponseCreateAt = 0;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -3532,7 +3554,7 @@ async function sendRealtimeTextToAgent(text, autoRespond = true) {
     }
   });
   if (autoRespond) {
-    realtimeSendEvent({ type: "response.create" });
+    requestRealtimeAssistantResponse({ force: true, minIntervalMs: 0 });
   }
 }
 
@@ -4164,6 +4186,11 @@ function handleRealtimeEvent(evt) {
     if (finalText) {
       realtimeUserTranscriptDelta = "";
       queueRealtimeSpeechIngest(finalText);
+      const skipSpeechResponse =
+        isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText);
+      if (!skipSpeechResponse) {
+        requestRealtimeAssistantResponse({ minIntervalMs: 700 });
+      }
     }
     return;
   }
