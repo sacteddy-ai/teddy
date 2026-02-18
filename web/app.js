@@ -898,6 +898,16 @@ function getVisionObjectByOrdinal(index) {
   return arr[n - 1] || null;
 }
 
+function getVisionObjectOrdinalById(objectId) {
+  const id = String(objectId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache : [];
+  const idx = arr.findIndex((o) => String(o?.id || "").trim() === id);
+  return idx >= 0 ? idx + 1 : null;
+}
+
 function roundVisionBboxValue(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -1169,6 +1179,7 @@ function normalizeVisionLabelCandidate(rawLabel) {
     return "";
   }
 
+  label = normalizeVoiceFoodAlias(label);
   label = label.replace(/^(?:\uADF8\uB0E5|\uC74C|\uC5B4|\uC544|\uC800\uAE30)\s+/u, "");
   label = label.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
   if (!label) {
@@ -1352,8 +1363,22 @@ function parseSpokenCountToken(rawToken) {
   return n;
 }
 
+const VOICE_FOOD_ALIAS_MAP = new Map([
+  ["희망", "피망"],
+  ["방울 토마토", "방울토마토"]
+]);
+
+function normalizeVoiceFoodAlias(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) {
+    return "";
+  }
+  return VOICE_FOOD_ALIAS_MAP.get(value) || value;
+}
+
 function normalizeVoiceIngredientPhrase(rawPhrase) {
-  const base = String(rawPhrase || "")
+  const aliasNormalized = normalizeVoiceFoodAlias(String(rawPhrase || "").replace(/\s+/g, " ").trim());
+  const base = String(aliasNormalized || rawPhrase || "")
     .toLowerCase()
     .replace(
       /(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C|\uC640|\uACFC|\uB3C4|\uC57C|\uC694|\uC774\uACE0|\uB77C\uACE0|\uB77C\uB294|\uC774\uB791|\uB791)$/u,
@@ -1610,8 +1635,8 @@ function parseQuantityOnlyIntent(rawText) {
 
   const patterns = [
     /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?/u,
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u,
-    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u,
+    /^\s*(?:\uADF8\uAC70|\uC774\uAC70|\uC800\uAC70)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C)?\s*[.!?~]*$/u
   ];
   const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
   for (const seg of segments) {
@@ -1716,14 +1741,14 @@ function parseDraftQuantityIntent(rawText) {
   }
 
   const patterns = [
-    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uB77C\uB2C8\uAE4C|\uAC70\uB4E0)?\s*[.!?~]*$/u
   ];
   for (const pattern of patterns) {
     const m = text.match(pattern);
     if (!m) {
       continue;
     }
-    const phrase = String(m[1] || "").trim();
+    const phrase = stripTrailingSpeechParticles(String(m[1] || "").trim());
     if (!phrase) {
       continue;
     }
@@ -1852,6 +1877,7 @@ function findDraftItemByVoicePhrase(ingredientPhrase) {
 
   let best = null;
   let bestScore = -1;
+  let bestSpecificity = -1;
   for (const item of items) {
     const candidates = [
       ingredientLabel(item?.ingredient_key || "", item?.ingredient_name || ""),
@@ -1871,13 +1897,148 @@ function findDraftItemByVoicePhrase(ingredientPhrase) {
       } else if (target.includes(normalized)) {
         score = 50;
       }
-      if (score > bestScore) {
+      const specificity = normalized.length;
+      if (score > bestScore || (score === bestScore && specificity > bestSpecificity)) {
         bestScore = score;
+        bestSpecificity = specificity;
         best = item;
       }
     }
   }
   return bestScore >= 50 ? best : null;
+}
+
+function findVisionObjectByVoicePhrase(ingredientPhrase) {
+  const target = normalizeVoiceIngredientPhrase(ingredientPhrase);
+  if (!target) {
+    return null;
+  }
+  const objects = Array.isArray(visionObjectsCache) ? visionObjectsCache : [];
+  if (objects.length === 0) {
+    return null;
+  }
+
+  let best = null;
+  let bestScore = -1;
+  let bestSpecificity = -1;
+  for (const obj of objects) {
+    const candidates = [
+      ingredientLabel(obj?.ingredient_key || "", obj?.ingredient_name || obj?.name || ""),
+      String(obj?.ingredient_name || ""),
+      String(obj?.name || ""),
+      String(obj?.ingredient_key || "").replace(/_/g, " ")
+    ];
+    for (const c of candidates) {
+      const normalized = normalizeVoiceIngredientPhrase(c);
+      if (!normalized) {
+        continue;
+      }
+      let score = 0;
+      if (normalized === target) {
+        score = 100;
+      } else if (normalized.includes(target)) {
+        score = 75;
+      } else if (target.includes(normalized)) {
+        score = 55;
+      }
+      const specificity = normalized.length;
+      if (score > bestScore || (score === bestScore && specificity > bestSpecificity)) {
+        bestScore = score;
+        bestSpecificity = specificity;
+        best = obj;
+      }
+    }
+  }
+  return bestScore >= 55 ? best : null;
+}
+
+function parseVisionAddByAnchorPhraseIntent(rawText) {
+  let text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return null;
+  }
+  text = text.replace(/^(?:\uADF8|\uC800|\uC774)\s*(?:\uC704|\uC544\uB798|\uC606)(?:\uCABD)?(?:\uC5D0|\uC73C\uB85C)?\s*/u, "");
+  if (!/(?:\uCD94\uAC00|\uB123\uC5B4|\uB354\uD574|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text)) {
+    return null;
+  }
+
+  const relationMatch = text.match(/^\s*(.+?)\s*(\uC606|\uC704|\uC544\uB798)(?:\uCABD)?(?:\uC5D0|\uC73C\uB85C)?\s+(.+)$/u);
+  if (!relationMatch) {
+    return null;
+  }
+  const anchorPhrase = stripTrailingSpeechParticles(
+    String(relationMatch[1] || "")
+      .replace(/^(?:\uADF8|\uC800|\uC774)\s+/u, "")
+      .trim()
+  );
+  const relationRaw = String(relationMatch[2] || "").trim();
+  const tail = String(relationMatch[3] || "").trim();
+  if (!anchorPhrase || !tail) {
+    return null;
+  }
+
+  let quantity = 1;
+  const qtyMatch = tail.match(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/u);
+  if (qtyMatch?.[1]) {
+    const parsed = parseSpokenCountToken(qtyMatch[1]);
+    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 200) {
+      quantity = parsed;
+    }
+  }
+
+  let label = "";
+  const addVerbMatch = tail.match(
+    /([0-9A-Za-z\uAC00-\uD7A3][0-9A-Za-z\uAC00-\uD7A3\s_-]{0,23})\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u
+  );
+  if (addVerbMatch?.[1]) {
+    label = String(addVerbMatch[1] || "").trim();
+  }
+  if (!label) {
+    const leadMatch = tail.match(/^([0-9A-Za-z\uAC00-\uD7A3][0-9A-Za-z\uAC00-\uD7A3\s_-]{0,23})\s*(?:\uC774|\uAC00)?\s*(?:\uC788|,|\.|$)/u);
+    if (leadMatch?.[1]) {
+      label = String(leadMatch[1] || "").trim();
+    }
+  }
+  if (!label) {
+    label = extractVisionLabelFromSpeech(tail) || tail;
+  }
+  label = normalizeVisionLabelCandidate(stripTrailingSpeechParticles(label));
+  if (!label) {
+    return null;
+  }
+  const relation = relationRaw === "\uC704" ? "above" : relationRaw === "\uC544\uB798" ? "below" : "right";
+  return { anchor_phrase: anchorPhrase, label, relation, quantity };
+}
+
+function parseVisionStandaloneAddIntent(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return null;
+  }
+  const withQty = text.match(
+    /^\s*([\p{L}\p{N}_ -]{1,24}?)\s+([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
+  );
+  const withoutQty = text.match(
+    /^\s*([\p{L}\p{N}_ -]{1,24}?)\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u
+  );
+  const m = withQty || withoutQty;
+  if (!m) {
+    return null;
+  }
+  const labelRaw = String(m[1] || "").trim();
+  const qtyRaw = withQty ? String(withQty[2] || "").trim() : "";
+  const label = normalizeVisionLabelCandidate(stripTrailingSpeechParticles(labelRaw));
+  if (!label) {
+    return null;
+  }
+  let quantity = 1;
+  if (qtyRaw) {
+    const parsed = parseSpokenCountToken(qtyRaw);
+    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 200) {
+      quantity = parsed;
+    }
+  }
+  return { label, quantity };
 }
 
 function parseVisionOrdinalTargetOnlyIntent(rawText) {
@@ -2406,6 +2567,40 @@ function buildAdjacentVoiceSpotBbox(referenceObj, nextObj = null) {
       boxW = clamp(Math.min(refW, nxtW), 0.04, 0.16);
       boxH = clamp(Math.min(refH, nxtH), 0.04, 0.16);
     }
+  }
+
+  const x = clamp(centerX - boxW / 2, 0, 1 - boxW);
+  const y = clamp(centerY - boxH / 2, 0, 1 - boxH);
+  return {
+    x: roundVisionBboxValue(x),
+    y: roundVisionBboxValue(y),
+    w: roundVisionBboxValue(boxW),
+    h: roundVisionBboxValue(boxH)
+  };
+}
+
+function buildRelativeVoiceSpotBbox(referenceObj, relation = "right") {
+  const refBbox = referenceObj?.bbox || null;
+  const refX = Number(refBbox?.x);
+  const refY = Number(refBbox?.y);
+  const refW = Number(refBbox?.w);
+  const refH = Number(refBbox?.h);
+  if (![refX, refY, refW, refH].every(Number.isFinite)) {
+    return { x: 0.45, y: 0.45, w: 0.1, h: 0.1 };
+  }
+
+  const center = getVisionObjectCenter(referenceObj) || { x: refX + refW / 2, y: refY + refH / 2 };
+  const boxW = clamp(refW, 0.04, 0.2);
+  const boxH = clamp(refH, 0.04, 0.2);
+  let centerX = center.x + refW * 1.05;
+  let centerY = center.y;
+
+  if (relation === "above") {
+    centerX = center.x;
+    centerY = center.y - refH * 1.15;
+  } else if (relation === "below") {
+    centerX = center.x;
+    centerY = center.y + refH * 1.15;
   }
 
   const x = clamp(centerX - boxW / 2, 0, 1 - boxW);
@@ -4003,6 +4198,61 @@ async function sendRealtimeTextToAgent(text, autoRespond = true) {
   }
 }
 
+function setVisionObjectQuantityByIngredientKey(ingredientKey, quantity) {
+  const key = String(ingredientKey || "").trim();
+  if (!key) {
+    return;
+  }
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) {
+    return;
+  }
+  (visionObjectsCache || []).forEach((obj) => {
+    if (String(obj?.ingredient_key || "").trim() === key) {
+      obj.quantity = q;
+    }
+  });
+}
+
+async function applyVoiceDraftQuantityUpdate(item, quantity, heardText) {
+  const key = String(item?.ingredient_key || "").trim();
+  if (!key) {
+    return;
+  }
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) {
+    return;
+  }
+  const displayName = ingredientLabel(key, item?.ingredient_name || item?.name || key);
+  setRealtimeStatus(tf("voice_heard", { text: heardText }));
+  appendRealtimeLogLine("draft(qty)", `${displayName} x${q}`);
+  setVisionObjectQuantityByIngredientKey(key, q);
+  await replaceCaptureDraftIngredient(key, displayName, q, item?.unit || "ea");
+  setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+  appendVoiceAck(t("voice_ack_applied"));
+  renderVisionObjectPreview({ skipImageReload: true });
+}
+
+function addVoiceVisionObjectWithLabel(targetObj, nextObj, label, quantity = 1, relation = "right") {
+  const bbox =
+    relation === "right" ? buildAdjacentVoiceSpotBbox(targetObj, nextObj) : buildRelativeVoiceSpotBbox(targetObj, relation);
+  const addedObj = buildCustomVisionObject(bbox);
+  const index = getVisionObjectOrdinalById(targetObj?.id || "");
+  if (Number.isFinite(index) && index > 0) {
+    insertVisionObjectAfterOrdinal(index, addedObj);
+  } else {
+    const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache.slice() : [];
+    visionObjectsCache = arr.concat([addedObj]);
+  }
+  addedObj.quantity = Number(quantity) > 0 ? Number(quantity) : 1;
+  visionSelectedObjectId = addedObj.id;
+  setVisionEditMode("select");
+  renderVisionObjectPreview({ skipImageReload: true });
+  closeVisionInlineEditor();
+  setVisionRelabelTarget(addedObj.id, { select: false, announce: false });
+  return addedObj;
+}
+
 function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   const text = String(finalText || "").trim();
   if (!text) {
@@ -4088,6 +4338,131 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     return;
   }
 
+  const draftQtyByPhrase = parseDraftQuantityIntent(text);
+  const hasExplicitAddVerb = /(?:\uCD94\uAC00|\uB123\uC5B4|\uB4F1\uB85D|\uC800\uC7A5)/u.test(text);
+  if (!hasExplicitAddVerb && draftQtyByPhrase?.quantity && draftQtyByPhrase?.ingredient_phrase) {
+    const draftTarget =
+      findDraftItemByVoicePhrase(draftQtyByPhrase.ingredient_phrase) ||
+      findVisionObjectByVoicePhrase(draftQtyByPhrase.ingredient_phrase);
+    if (draftTarget?.ingredient_key) {
+      realtimeIngestChain = realtimeIngestChain
+        .then(() => applyVoiceDraftQuantityUpdate(draftTarget, draftQtyByPhrase.quantity, text))
+        .catch((err) => {
+          const msg = err?.message || "unknown error";
+          appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+          setGlobalError(msg);
+          setCaptureError(msg);
+          setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+        });
+      return;
+    }
+  }
+
+  const addByAnchorPhrase = parseVisionAddByAnchorPhraseIntent(text);
+  if (addByAnchorPhrase) {
+    const targetObj = findVisionObjectByVoicePhrase(addByAnchorPhrase.anchor_phrase);
+    if (!targetObj?.id) {
+      const msg = `target spot for "${addByAnchorPhrase.anchor_phrase}" not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+    const nextObj = addByAnchorPhrase.relation === "right" ? getVisionObjectByOrdinal(getVisionObjectOrdinalById(targetObj.id) + 1) : null;
+    const addedObj = addVoiceVisionObjectWithLabel(
+      targetObj,
+      nextObj,
+      addByAnchorPhrase.label,
+      addByAnchorPhrase.quantity,
+      addByAnchorPhrase.relation
+    );
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine(
+      "label_add",
+      `${addByAnchorPhrase.anchor_phrase} ${addByAnchorPhrase.relation}: ${addByAnchorPhrase.label} x${addByAnchorPhrase.quantity}`
+    );
+    realtimeIngestChain = realtimeIngestChain
+      .then(() =>
+        replaceVisionObjectLabel(addedObj.id, addByAnchorPhrase.label, {
+          quantity: addByAnchorPhrase.quantity || 1,
+          unit: "ea"
+        })
+      )
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = addedObj.id;
+        realtimeLastVisionTargetAt = Date.now();
+        setRealtimeStatus(t("voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== String(addedObj.id || ""));
+        if (visionSelectedObjectId === addedObj.id) {
+          visionSelectedObjectId = "";
+        }
+        renderVisionObjectPreview({ skipImageReload: true });
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
+  const standaloneAdd = parseVisionStandaloneAddIntent(text);
+  if (standaloneAdd) {
+    const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache : [];
+    const targetObj =
+      getVisionObjectById(visionSelectedObjectId) ||
+      (realtimeLastVisionTargetObjectId ? getVisionObjectById(realtimeLastVisionTargetObjectId) : null) ||
+      (arr.length > 0 ? arr[arr.length - 1] : null);
+
+    let addedObj = null;
+    if (targetObj?.id) {
+      const nextObj = getVisionObjectByOrdinal(getVisionObjectOrdinalById(targetObj.id) + 1);
+      addedObj = addVoiceVisionObjectWithLabel(targetObj, nextObj, standaloneAdd.label, standaloneAdd.quantity, "right");
+    } else {
+      addedObj = buildCustomVisionObject({ x: 0.45, y: 0.45, w: 0.1, h: 0.1 });
+      addedObj.quantity = standaloneAdd.quantity || 1;
+      const current = Array.isArray(visionObjectsCache) ? visionObjectsCache.slice() : [];
+      visionObjectsCache = current.concat([addedObj]);
+      visionSelectedObjectId = addedObj.id;
+      setVisionEditMode("select");
+      renderVisionObjectPreview({ skipImageReload: true });
+      setVisionRelabelTarget(addedObj.id, { select: false, announce: false });
+    }
+
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("label_add", `${standaloneAdd.label} x${standaloneAdd.quantity}`);
+    realtimeIngestChain = realtimeIngestChain
+      .then(() =>
+        replaceVisionObjectLabel(addedObj.id, standaloneAdd.label, {
+          quantity: standaloneAdd.quantity || 1,
+          unit: "ea"
+        })
+      )
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = addedObj.id;
+        realtimeLastVisionTargetAt = Date.now();
+        setRealtimeStatus(t("voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== String(addedObj.id || ""));
+        if (visionSelectedObjectId === addedObj.id) {
+          visionSelectedObjectId = "";
+        }
+        renderVisionObjectPreview({ skipImageReload: true });
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
   const adjacentAdd = parseVisionAddAdjacentIntent(text);
   if (adjacentAdd) {
     const targetObj = getVisionObjectByOrdinal(adjacentAdd.index);
@@ -4098,14 +4473,7 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       return;
     }
     const nextObj = getVisionObjectByOrdinal(adjacentAdd.index + 1);
-    const bbox = buildAdjacentVoiceSpotBbox(targetObj, nextObj);
-    const addedObj = buildCustomVisionObject(bbox);
-    insertVisionObjectAfterOrdinal(adjacentAdd.index, addedObj);
-    visionSelectedObjectId = addedObj.id;
-    setVisionEditMode("select");
-    renderVisionObjectPreview({ skipImageReload: true });
-    closeVisionInlineEditor();
-    setVisionRelabelTarget(addedObj.id, { select: false, announce: false });
+    const addedObj = addVoiceVisionObjectWithLabel(targetObj, nextObj, adjacentAdd.label, 1, "right");
     setRealtimeStatus(tf("voice_heard", { text }));
     appendRealtimeLogLine("label_add", `${adjacentAdd.index}: ${adjacentAdd.label}`);
 
@@ -4246,22 +4614,63 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       return;
     }
 
+    const targetedQty = parseDraftQuantityIntent(text);
+    if (targetedQty?.quantity) {
+      const obj = getVisionObjectById(targetId);
+      const key = String(obj?.ingredient_key || "").trim();
+      if (key && isVoicePhraseMatchForVisionObject(targetedQty.ingredient_phrase, obj)) {
+        obj.quantity = targetedQty.quantity;
+        realtimeLastVisionTargetObjectId = targetId;
+        realtimeLastVisionTargetAt = Date.now();
+        realtimeIngestChain = realtimeIngestChain
+          .then(() => applyVoiceDraftQuantityUpdate(obj, targetedQty.quantity, text))
+          .then(() => {
+            realtimeLastVisionRelabelAt = Date.now();
+          })
+          .catch((err) => {
+            const msg = err?.message || "unknown error";
+            appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+            setGlobalError(msg);
+            setCaptureError(msg);
+            setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+          });
+        return;
+      }
+      const mentionedItem = findDraftItemByVoicePhrase(targetedQty.ingredient_phrase);
+      if (mentionedItem?.ingredient_key) {
+        realtimeIngestChain = realtimeIngestChain
+          .then(() => applyVoiceDraftQuantityUpdate(mentionedItem, targetedQty.quantity, text))
+          .then(() => {
+            realtimeLastVisionTargetAt = Date.now();
+          })
+          .catch((err) => {
+            const msg = err?.message || "unknown error";
+            appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+            setGlobalError(msg);
+            setCaptureError(msg);
+            setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+          });
+        return;
+      }
+
+      appendRealtimeLogLine("label_ignored", text);
+      setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
+      return;
+    }
+
     const qtyOnly = parseQuantityOnlyIntent(text);
     if (qtyOnly?.quantity) {
       const obj = getVisionObjectById(targetId);
       const key = String(obj?.ingredient_key || "").trim();
       if (key) {
-        const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
-        setRealtimeStatus(tf("voice_heard", { text }));
-        appendRealtimeLogLine("draft(qty)", `${displayName} x${qtyOnly.quantity}`);
+        obj.quantity = qtyOnly.quantity;
         realtimeLastVisionTargetObjectId = targetId;
         realtimeLastVisionTargetAt = Date.now();
         realtimeIngestChain = realtimeIngestChain
-          .then(() => replaceCaptureDraftIngredient(key, displayName, qtyOnly.quantity, obj?.unit || "ea"))
+          .then(() => applyVoiceDraftQuantityUpdate(obj, qtyOnly.quantity, text))
           .then(() => {
             realtimeLastVisionRelabelAt = Date.now();
-            setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-            appendVoiceAck(t("voice_ack_applied"));
           })
           .catch((err) => {
             const msg = err?.message || "unknown error";
@@ -4274,32 +4683,14 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       }
     }
 
-    const targetedQty = parseDraftQuantityIntent(text);
-    if (targetedQty?.quantity) {
-      const obj = getVisionObjectById(targetId);
-      const key = String(obj?.ingredient_key || "").trim();
-      if (key && isVoicePhraseMatchForVisionObject(targetedQty.ingredient_phrase, obj)) {
-        const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
-        setRealtimeStatus(tf("voice_heard", { text }));
-        appendRealtimeLogLine("draft(qty)", `${displayName} x${targetedQty.quantity}`);
-        realtimeLastVisionTargetObjectId = targetId;
-        realtimeLastVisionTargetAt = Date.now();
-        realtimeIngestChain = realtimeIngestChain
-          .then(() => replaceCaptureDraftIngredient(key, displayName, targetedQty.quantity, obj?.unit || "ea"))
-          .then(() => {
-            realtimeLastVisionRelabelAt = Date.now();
-            setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-            appendVoiceAck(t("voice_ack_applied"));
-          })
-          .catch((err) => {
-            const msg = err?.message || "unknown error";
-            appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
-            setGlobalError(msg);
-            setCaptureError(msg);
-            setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
-          });
-        return;
-      }
+    const looksLikeQuantitySpeech =
+      /(?:\uAC1C|\uBCD1|\uBD09|\uCE94|\uD1B5|ea)/u.test(text) ||
+      /(?:\uAC1C\uC218|\uC218\uB7C9)/u.test(text);
+    if (looksLikeQuantitySpeech) {
+      appendRealtimeLogLine("label_ignored", text);
+      setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
+      return;
     }
 
     let correctionLabel = parseCorrectionReplacementLabel(text);
@@ -4373,20 +4764,15 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     realtimeLastVisionTargetObjectId && recentTargetAge >= 0 && recentTargetAge <= 30000
       ? realtimeLastVisionTargetObjectId
       : "";
-  const qtyOnlyWithRecentTarget = parseQuantityOnlyIntent(text);
+  const qtyOnlyWithRecentTarget = draftQtyByPhrase?.quantity ? null : parseQuantityOnlyIntent(text);
   if (recentTargetId && qtyOnlyWithRecentTarget?.quantity) {
     const obj = getVisionObjectById(recentTargetId);
     const key = String(obj?.ingredient_key || "").trim();
     if (key) {
-      const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
-      setRealtimeStatus(tf("voice_heard", { text }));
-      appendRealtimeLogLine("draft(qty)", `${displayName} x${qtyOnlyWithRecentTarget.quantity}`);
       realtimeIngestChain = realtimeIngestChain
-        .then(() => replaceCaptureDraftIngredient(key, displayName, qtyOnlyWithRecentTarget.quantity, obj?.unit || "ea"))
+        .then(() => applyVoiceDraftQuantityUpdate(obj, qtyOnlyWithRecentTarget.quantity, text))
         .then(() => {
           realtimeLastVisionTargetAt = Date.now();
-          setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-          appendVoiceAck(t("voice_ack_applied"));
         })
         .catch((err) => {
           const msg = err?.message || "unknown error";
@@ -4399,26 +4785,12 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
     }
   }
 
-  const draftQuantityIntent = parseDraftQuantityIntent(text);
-  if (draftQuantityIntent) {
+  const draftQuantityIntent = draftQtyByPhrase || parseDraftQuantityIntent(text);
+  if (draftQuantityIntent?.quantity) {
     const targetItem = findDraftItemByVoicePhrase(draftQuantityIntent.ingredient_phrase);
     if (targetItem?.ingredient_key) {
-      const displayName = ingredientLabel(targetItem.ingredient_key, targetItem.ingredient_name);
-      setRealtimeStatus(tf("voice_heard", { text }));
-      appendRealtimeLogLine("draft(qty)", `${displayName} x${draftQuantityIntent.quantity}`);
       realtimeIngestChain = realtimeIngestChain
-        .then(() =>
-          replaceCaptureDraftIngredient(
-            targetItem.ingredient_key,
-            displayName,
-            draftQuantityIntent.quantity,
-            targetItem.unit || "ea"
-          )
-        )
-        .then(() => {
-          setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
-          appendVoiceAck(t("voice_ack_applied"));
-        })
+        .then(() => applyVoiceDraftQuantityUpdate(targetItem, draftQuantityIntent.quantity, text))
         .catch((err) => {
           const msg = err?.message || "unknown error";
           appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
@@ -4808,6 +5180,8 @@ function handleRealtimeEvent(evt) {
       queueRealtimeSpeechIngest(finalText);
       const commandLikeSpeech =
         Boolean(parseVisionAddAdjacentIntent(finalText)) ||
+        Boolean(parseVisionAddByAnchorPhraseIntent(finalText)) ||
+        Boolean(parseVisionStandaloneAddIntent(finalText)) ||
         Boolean(parseVisionOrdinalQuantityIntent(finalText)) ||
         Boolean(parseVisionOrdinalRelabelIntent(finalText)) ||
         Boolean(parseVisionOrdinalTargetOnlyIntent(finalText)) ||
