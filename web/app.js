@@ -1992,23 +1992,56 @@ function parseVoiceVisionLabelAndQuantity(rawText) {
     return null;
   }
 
-  const qtyIntent = parseDraftQuantityIntent(text);
+  const sentence = String(text || "")
+    .split(/[.!?~\n]+/u)
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)[0] || text;
+
+  const cleanupLabelPhrase = (raw) => {
+    let value = String(raw || "").trim();
+    if (!value) {
+      return "";
+    }
+    value = value
+      .replace(/\s*(?:\uB610|\uB354|\uC815\uB3C4|\uCAB4)\s*$/u, "")
+      .replace(
+        /\s*(?:\uD558\uB098|\uD55C|\uB458|\uB450|\uC14B|\uC138|\uB137|\uB124|\uB2E4\uC12F|\uC5EC\uC12F|\uC77C\uACF1|\uC5EC\uB35F|\uC544\uD649|\uC5F4|\d{1,3})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*$/u,
+        ""
+      )
+      .trim();
+    const parts = value.split(/\s+/u).filter(Boolean);
+    const filtered = parts.filter((part) => {
+      const token = String(part || "").trim();
+      if (!token) {
+        return false;
+      }
+      if (/^(?:\uB610|\uB354|\uC815\uB3C4|\uCAB4)$/u.test(token)) {
+        return false;
+      }
+      if (parseSpokenCountToken(token)) {
+        return false;
+      }
+      return true;
+    });
+    value = filtered.join(" ").trim() || value;
+    return stripTrailingSpeechParticles(value);
+  };
+
+  const qtyIntent = parseDraftQuantityIntent(sentence);
   if (qtyIntent?.ingredient_phrase && qtyIntent?.quantity) {
-    const normalizedLabel = normalizeVisionLabelCandidate(
-      stripTrailingSpeechParticles(String(qtyIntent.ingredient_phrase || "").trim())
-    );
+    const normalizedLabel = normalizeVisionLabelCandidate(cleanupLabelPhrase(qtyIntent.ingredient_phrase));
     if (normalizedLabel) {
       return { label: normalizedLabel, quantity: qtyIntent.quantity };
     }
   }
 
   let quantity = 1;
-  const qOnly = parseQuantityOnlyIntent(text);
+  const qOnly = parseQuantityOnlyIntent(sentence);
   if (qOnly?.quantity) {
     quantity = qOnly.quantity;
   }
 
-  let candidate = String(text || "").trim();
+  let candidate = String(sentence || "").trim();
   candidate = candidate
     .replace(
       /\s*(?:\uC744|\uB97C|\uC774|\uAC00)?\s*(?:\uCD94\uAC00|\uB123\uC5B4|\uB354\uD574|\uB4F1\uB85D|\uC800\uC7A5)(?:\uD574|\uD574\uC918|\uD574\uC8FC\uC138\uC694)?\s*[.!?~]*$/u,
@@ -2019,6 +2052,7 @@ function parseVoiceVisionLabelAndQuantity(rawText) {
   if (!candidate) {
     return null;
   }
+  candidate = cleanupLabelPhrase(candidate);
   const normalizedLabel = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(candidate) || candidate);
   if (!normalizedLabel) {
     return null;
@@ -5333,10 +5367,9 @@ function handleRealtimeEvent(evt) {
         isAffirmationOnlySpeech(finalText) ||
         isUndoSpeech(finalText) ||
         isVoiceConnectorOnlyText(finalText) ||
-        commandLikeSpeech ||
         (isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText));
       if (!skipSpeechResponse) {
-        requestRealtimeAssistantResponse({ minIntervalMs: 700 });
+        requestRealtimeAssistantResponse({ minIntervalMs: commandLikeSpeech ? 120 : 700 });
       }
     }
     return;
