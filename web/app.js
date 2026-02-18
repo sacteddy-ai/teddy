@@ -237,6 +237,7 @@ const I18N = {
     voice_draft_updated_ready: "Added to draft. Review and tap Finalize to save.",
     voice_draft_edit_hint: "Say name or quantity.",
     voice_ack_applied: "Applied.",
+    voice_ack_confirmed: "Confirmed.",
     voice_ack_target_selected: "Spot {index} selected. Say name or quantity.",
     voice_wait_more: "Keep speaking.",
     voice_already_applied: "Already applied.",
@@ -423,6 +424,7 @@ const I18N = {
     voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
     voice_draft_edit_hint: "이름 또는 수량만 말하세요.",
     voice_ack_applied: "적용했어요.",
+    voice_ack_confirmed: "확인했어요.",
     voice_ack_target_selected: "{index}번 선택. 이름 또는 수량을 말하세요.",
     voice_wait_more: "계속 말하세요.",
     voice_already_applied: "이미 반영됐어요.",
@@ -1153,6 +1155,10 @@ function normalizeVisionLabelCandidate(rawLabel) {
     return "";
   }
 
+  if (isAffirmationOnlySpeech(label)) {
+    return "";
+  }
+
   label = label.replace(/^(?:\uADF8\uB0E5|\uC74C|\uC5B4|\uC544|\uC800\uAE30)\s+/u, "");
   label = label.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
   if (!label) {
@@ -1408,6 +1414,59 @@ function isVoiceConnectorOnlyText(rawText) {
   );
 }
 
+function isAffirmationOnlySpeech(rawText) {
+  const compact = String(rawText || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+  if (!compact) {
+    return false;
+  }
+  const yesTokens = [
+    "\uB9DE\uC2B5\uB2C8\uB2E4",
+    "\uB9DE\uC544\uC694",
+    "\uB9DE\uC544",
+    "\uB9DE\uC9C0",
+    "\uB9DE\uC8E0",
+    "\uC815\uD655\uD574\uC694",
+    "\uC815\uD655\uD574",
+    "\uADF8\uB807\uC2B5\uB2C8\uB2E4",
+    "\uADF8\uB807\uC8E0",
+    "\uADF8\uB798\uC694",
+    "\uADF8\uB798",
+    "\uADF8\uB7FC",
+    "\uC751",
+    "\uB124",
+    "\uC608",
+    "\u3147\u3147",
+    "yes",
+    "ok",
+    "okay",
+    "right",
+    "correct"
+  ];
+  if (yesTokens.includes(compact)) {
+    return true;
+  }
+
+  // Accept stacked confirmations like combined yes-tokens ("okyes", etc.).
+  let rest = compact;
+  for (let i = 0; i < 8 && rest; i += 1) {
+    let matched = false;
+    for (const token of yesTokens) {
+      if (rest.startsWith(token)) {
+        rest = rest.slice(token.length);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      break;
+    }
+  }
+  return rest.length === 0;
+}
+
 function isLikelyFragmentaryInventoryText(rawText) {
   const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
@@ -1445,16 +1504,24 @@ function parseQuantityOnlyIntent(rawText) {
 
   const patterns = [
     /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?/u,
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u,
+    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
   ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (!m) {
+  const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
+  for (const seg of segments) {
+    const candidate = stripLeadingSpeechFiller(seg);
+    if (!candidate) {
       continue;
     }
-    const q = parseSpokenCountToken(m[1]);
-    if (Number.isFinite(q) && q > 0 && q <= 200) {
-      return { quantity: q };
+    for (const p of patterns) {
+      const m = candidate.match(p);
+      if (!m) {
+        continue;
+      }
+      const q = parseSpokenCountToken(m[1]);
+      if (Number.isFinite(q) && q > 0 && q <= 200) {
+        return { quantity: q };
+      }
     }
   }
   return null;
@@ -3708,6 +3775,13 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       return;
     }
 
+    if (isAffirmationOnlySpeech(text)) {
+      appendRealtimeLogLine("confirm", text);
+      setRealtimeStatus(t("voice_ready"));
+      appendVoiceAck(t("voice_ack_confirmed"));
+      return;
+    }
+
     const qtyOnly = parseQuantityOnlyIntent(text);
     if (qtyOnly?.quantity) {
       const obj = getVisionObjectById(targetId);
@@ -4252,7 +4326,8 @@ function handleRealtimeEvent(evt) {
       realtimeUserTranscriptDelta = "";
       queueRealtimeSpeechIngest(finalText);
       const skipSpeechResponse =
-        isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText);
+        isAffirmationOnlySpeech(finalText) ||
+        (isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText));
       if (!skipSpeechResponse) {
         requestRealtimeAssistantResponse({ minIntervalMs: 700 });
       }
