@@ -160,6 +160,7 @@ const I18N = {
     ph_realtime_text_example: "What can I cook with what you see?",
     btn_send_to_agent: "Send To Agent",
     btn_send_message: "Send Message",
+    btn_undo_last: "Undo Last",
     btn_finalize_to_inventory: "Finalize To Inventory",
     capture_draft_title: "Capture Draft",
     pending_confirmations_title: "Pending Confirmations (Session)",
@@ -238,6 +239,8 @@ const I18N = {
     voice_draft_edit_hint: "Say name or quantity.",
     voice_ack_applied: "Applied.",
     voice_ack_confirmed: "Confirmed.",
+    voice_ack_undone: "Undone.",
+    voice_undo_empty: "Nothing to undo.",
     voice_ack_target_selected: "Spot {index} selected. Say name or quantity.",
     voice_wait_more: "Keep speaking.",
     voice_already_applied: "Already applied.",
@@ -361,6 +364,7 @@ const I18N = {
     ph_realtime_text_example: "지금 있는 재료로 뭘 만들 수 있어?",
     btn_send_to_agent: "에이전트에게 전송",
     btn_send_message: "메시지 보내기",
+    btn_undo_last: "이전 변경 취소",
     btn_finalize_to_inventory: "인벤토리로 확정",
     capture_draft_title: "캡처 드래프트",
     pending_confirmations_title: "확인 필요 (세션)",
@@ -425,6 +429,8 @@ const I18N = {
     voice_draft_edit_hint: "이름 또는 수량만 말하세요.",
     voice_ack_applied: "적용했어요.",
     voice_ack_confirmed: "확인했어요.",
+    voice_ack_undone: "되돌렸어요.",
+    voice_undo_empty: "되돌릴 변경이 없어요.",
     voice_ack_target_selected: "{index}번 선택. 이름 또는 수량을 말하세요.",
     voice_wait_more: "계속 말하세요.",
     voice_already_applied: "이미 반영됐어요.",
@@ -1467,6 +1473,60 @@ function isAffirmationOnlySpeech(rawText) {
   return rest.length === 0;
 }
 
+function isUndoSpeech(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return false;
+  }
+
+  const compact = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+  if (!compact) {
+    return false;
+  }
+
+  const exactSet = new Set([
+    "\uC544\uB2C8\uC57C",
+    "\uC544\uB0D0",
+    "\uC544\uB2C8\uC694",
+    "\uC544\uB2C8",
+    "\uD2C0\uB838\uC5B4",
+    "\uD2C0\uB824",
+    "\uADF8\uAC70\uB9D0\uACE0",
+    "\uC774\uAC70\uB9D0\uACE0",
+    "\uADF8\uAC70\uC544\uB2C8\uC57C",
+    "\uC774\uAC70\uC544\uB2C8\uC57C",
+    "\uCDE8\uC18C",
+    "\uCDE8\uC18C\uD574",
+    "\uB418\uB3CC\uB824",
+    "\uB418\uB3CC\uB824\uC918",
+    "\uB418\uB3CC\uB9AC\uAE30",
+    "\uC6D0\uB798\uB300\uB85C",
+    "\uC774\uC804\uC73C\uB85C",
+    "\uBC29\uAE08\uAC70\uCDE8\uC18C",
+    "\uBC29\uAE08\uC218\uC815\uCDE8\uC18C",
+    "undo",
+    "undolast",
+    "rollback",
+    "revert",
+    "goback"
+  ]);
+  if (exactSet.has(compact)) {
+    return true;
+  }
+
+  const lowered = String(rawText || "").toLowerCase();
+  if (/\b(?:undo|rollback|revert|go back|cancel last)\b/i.test(lowered)) {
+    return true;
+  }
+  if (/(?:\uBC29\uAE08|\uC9C1\uC804|\uC774\uC804).*(?:\uCDE8\uC18C|\uB418\uB3CC|\uC6D0\uB798)/u.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function isLikelyFragmentaryInventoryText(rawText) {
   const text = stripLeadingSpeechFiller(rawText);
   if (!text) {
@@ -1999,6 +2059,28 @@ async function removeCaptureDraftIngredient(ingredientKey, quantity, unit, remov
       quantity: quantity ?? 1,
       unit: unit || "ea",
       remove_all: Boolean(removeAll)
+    })
+  });
+
+  const capture = result?.data?.capture || null;
+  if (capture) {
+    renderCaptureDraft(capture);
+  }
+  await loadReviewQueue();
+  return result;
+}
+
+async function undoCaptureDraftLastChange(sourceType = "manual") {
+  const sessionId = getCaptureSessionId();
+  if (!sessionId) {
+    throw new Error(t("err_no_capture_session"));
+  }
+
+  const result = await request(`/api/v1/capture/sessions/${sessionId}/draft/undo`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: getUserId(),
+      source_type: String(sourceType || "manual")
     })
   });
 
@@ -3678,6 +3760,38 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
   realtimeRecentSpeechTexts = [...recentContext, text].slice(-4);
   const suppressContextRepair = now - Number(realtimeLastVisionRelabelAt || 0) < 12000;
 
+  if (isUndoSpeech(text)) {
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("undo", text);
+    realtimeIngestChain = realtimeIngestChain
+      .then(async () => {
+        const result = await undoCaptureDraftLastChange(sourceType);
+        const remaining = Number(result?.data?.undone?.remaining_history_count || 0);
+        const ack = t("voice_ack_undone");
+        appendRealtimeLogLine("system", remaining > 0 ? `${ack} (${remaining})` : ack);
+        setRealtimeStatus(ack);
+        appendVoiceAck(ack);
+        draftVoiceEditTarget = null;
+        visionRelabelTargetId = "";
+        closeVisionInlineEditor();
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        if (/no draft history to undo/i.test(msg)) {
+          const emptyMsg = t("voice_undo_empty");
+          appendRealtimeLogLine("system", emptyMsg);
+          setRealtimeStatus(emptyMsg);
+          appendVoiceAck(emptyMsg);
+          return;
+        }
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
   if (draftVoiceEditTarget) {
     const target = draftVoiceEditTarget;
     draftVoiceEditTarget = null;
@@ -4327,6 +4441,7 @@ function handleRealtimeEvent(evt) {
       queueRealtimeSpeechIngest(finalText);
       const skipSpeechResponse =
         isAffirmationOnlySpeech(finalText) ||
+        isUndoSpeech(finalText) ||
         (isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText));
       if (!skipSpeechResponse) {
         requestRealtimeAssistantResponse({ minIntervalMs: 700 });
@@ -6405,6 +6520,23 @@ function bindEvents() {
       setGlobalError(err.message);
     }
   });
+  if ($("undoCaptureBtn")) {
+    $("undoCaptureBtn").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await undoCaptureDraftLastChange("manual");
+        setCaptureError("");
+      } catch (err) {
+        const msg = err?.message || String(err);
+        if (/no draft history to undo/i.test(msg)) {
+          setRealtimeStatus(t("voice_undo_empty"));
+          return;
+        }
+        setCaptureError(msg);
+        setGlobalError(msg);
+      }
+    });
+  }
   $("analyzeVisionImageBtn").addEventListener("click", async (event) => {
     event.preventDefault();
     try {

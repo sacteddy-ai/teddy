@@ -1,8 +1,8 @@
 import { jsonResponse, errorResponse, withOptionsCors, readJsonOptional } from "../../../../../../_lib/http.js";
 import { captureSessionKey, getObject, putObject } from "../../../../../../_lib/store.js";
 import { applyConversationCommandsToDraft } from "../../../../../../_lib/chat.js";
-import { buildCaptureSessionView } from "../../../../../../_lib/capture.js";
-import { nowIso, normalizeIngredientKey } from "../../../../../../_lib/util.js";
+import { applyDraftMutationWithHistory, buildCaptureSessionView } from "../../../../../../_lib/capture.js";
+import { normalizeIngredientKey } from "../../../../../../_lib/util.js";
 
 function coerceQuantity(value) {
   const n = Number(value);
@@ -80,12 +80,12 @@ export async function onRequest(context) {
     const currentDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
     const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);
 
-    const updatedAt = nowIso();
-    const updatedSession = {
-      ...session,
-      draft_items: nextDraft,
-      updated_at: updatedAt
-    };
+    const updatedSession = applyDraftMutationWithHistory(session, nextDraft, {
+      source_type: "draft_remove",
+      reason: removeAll ? "remove_all" : "remove",
+      source_text: ingredientKeyRaw,
+      user_id: userId
+    });
     await putObject(context.env, captureSessionKey(sessionId), updatedSession);
 
     return jsonResponse(context, {
@@ -107,4 +107,3 @@ export async function onRequest(context) {
     return errorResponse(context, msg, 400);
   }
 }
-

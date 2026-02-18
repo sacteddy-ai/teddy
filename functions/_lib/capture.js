@@ -47,6 +47,101 @@ function findDraftItemByKey(draftItems, ingredientKey) {
   return null;
 }
 
+function cloneDraftItems(draftItems) {
+  const items = Array.isArray(draftItems) ? draftItems : [];
+  return items.map((item) => ({
+    ingredient_key: normalizeIngredientKey(item?.ingredient_key || ""),
+    ingredient_name: item?.ingredient_name ? String(item.ingredient_name) : String(item?.ingredient_key || ""),
+    quantity: Math.round(Number(item?.quantity || 0) * 100) / 100,
+    unit: item?.unit ? String(item.unit) : "ea",
+    source: item?.source ? String(item.source) : "chat_text",
+    confidence: item?.confidence ? String(item.confidence) : "medium",
+    updated_at: item?.updated_at ? String(item.updated_at) : nowIso()
+  }));
+}
+
+function draftFingerprint(draftItems) {
+  const rows = cloneDraftItems(draftItems)
+    .filter((item) => item.ingredient_key)
+    .sort((a, b) => {
+      const k = String(a.ingredient_key).localeCompare(String(b.ingredient_key));
+      if (k !== 0) {
+        return k;
+      }
+      const u = String(a.unit).localeCompare(String(b.unit));
+      if (u !== 0) {
+        return u;
+      }
+      return Number(a.quantity || 0) - Number(b.quantity || 0);
+    })
+    .map((item) => {
+      const q = Math.round(Number(item.quantity || 0) * 100) / 100;
+      return `${item.ingredient_key}|${item.ingredient_name}|${q}|${item.unit}`;
+    });
+  return rows.join("||");
+}
+
+export function applyDraftMutationWithHistory(session, nextDraftItems, metadata = {}) {
+  const prevDraft = Array.isArray(session?.draft_items) ? session.draft_items : [];
+  const nextDraft = Array.isArray(nextDraftItems) ? nextDraftItems : [];
+  const now = nowIso();
+
+  const sameDraft = draftFingerprint(prevDraft) === draftFingerprint(nextDraft);
+  const normalizedNextDraft = cloneDraftItems(nextDraft);
+  if (sameDraft) {
+    return {
+      ...session,
+      draft_items: normalizedNextDraft,
+      updated_at: now
+    };
+  }
+
+  const history = Array.isArray(session?.draft_history) ? session.draft_history : [];
+  const sourceType = metadata?.source_type ? String(metadata.source_type).trim() : "unknown";
+  const reason = metadata?.reason ? String(metadata.reason).trim() : "mutation";
+  const sourceText = metadata?.source_text ? String(metadata.source_text).trim() : "";
+  const userId = metadata?.user_id ? String(metadata.user_id).trim() : "";
+
+  const historyEntry = {
+    id: crypto.randomUUID(),
+    created_at: now,
+    source_type: sourceType || "unknown",
+    reason: reason || "mutation",
+    source_text: sourceText ? sourceText.slice(0, 240) : null,
+    user_id: userId || null,
+    draft_items: cloneDraftItems(prevDraft)
+  };
+
+  const nextHistory = history.concat([historyEntry]).slice(-40);
+  return {
+    ...session,
+    draft_items: normalizedNextDraft,
+    draft_history: nextHistory,
+    updated_at: now
+  };
+}
+
+export function popCaptureDraftHistory(session) {
+  const history = Array.isArray(session?.draft_history) ? session.draft_history : [];
+  if (history.length === 0) {
+    return null;
+  }
+  const entry = history[history.length - 1] || null;
+  const restoredDraft = cloneDraftItems(entry?.draft_items || []);
+  const now = nowIso();
+  const updatedSession = {
+    ...session,
+    draft_items: restoredDraft,
+    draft_history: history.slice(0, -1),
+    updated_at: now
+  };
+  return {
+    session: updatedSession,
+    entry,
+    remaining_history_count: Math.max(0, history.length - 1)
+  };
+}
+
 function pickLastAddedIngredientKeyFromTurns(session) {
   const turns = Array.isArray(session?.turns) ? session.turns : [];
   for (let i = turns.length - 1; i >= 0; i -= 1) {
@@ -392,9 +487,14 @@ export async function applyCaptureSessionParsedInput(context, session, sourceTyp
     }
   }
 
+  const draftUpdatedSession = applyDraftMutationWithHistory(session, nextDraft, {
+    source_type: sourceType || "text",
+    reason: "message",
+    source_text: textInput || "",
+    user_id: session?.user_id ? String(session.user_id) : ""
+  });
   const updatedSession = {
-    ...session,
-    draft_items: nextDraft,
+    ...draftUpdatedSession,
     turns: nextTurns,
     pending_review_item_ids: Array.from(pendingMap.keys()).sort(),
     updated_at: now
@@ -481,7 +581,12 @@ export async function resolveIngredientReviewQueueItem(context, userId, queueIte
           match_type: "manual_confirmation"
         };
         const nextDraft = applyConversationCommandsToDraft(draftItems, [addCommand]);
-        const nextSession = { ...session, draft_items: nextDraft, updated_at: now };
+        const nextSession = applyDraftMutationWithHistory(session, nextDraft, {
+          source_type: "review_map",
+          reason: "review_queue_map",
+          source_text: target?.phrase ? String(target.phrase) : "",
+          user_id: resolvedByUserId || sessionUserId
+        });
         await putObject(context.env, captureSessionKey(session.id), nextSession);
         sessionApply = { applied: true, session_id: session.id, draft_item_count: nextDraft.length };
       } else if (session) {

@@ -2,9 +2,9 @@ import { jsonResponse, errorResponse, withOptionsCors, readJsonOptional } from "
 import { captureSessionKey, getObject, putObject } from "../../../../../../_lib/store.js";
 import { buildAliasLookup } from "../../../../../../_lib/catalog.js";
 import { applyConversationCommandsToDraft } from "../../../../../../_lib/chat.js";
-import { buildCaptureSessionView } from "../../../../../../_lib/capture.js";
+import { applyDraftMutationWithHistory, buildCaptureSessionView } from "../../../../../../_lib/capture.js";
 import { ensureCatalogLocalizationForCommands } from "../../../../../../_lib/ingredient_localization.js";
-import { nowIso, normalizeIngredientKey, normalizeReviewPhraseValue, normalizeWord } from "../../../../../../_lib/util.js";
+import { normalizeIngredientKey, normalizeReviewPhraseValue, normalizeWord } from "../../../../../../_lib/util.js";
 
 function coerceQuantity(value) {
   const n = Number(value);
@@ -144,12 +144,12 @@ export async function onRequest(context) {
 
     const nextDraft = applyConversationCommandsToDraft(currentDraft, commands);
 
-    const updatedAt = nowIso();
-    const updatedSession = {
-      ...session,
-      draft_items: nextDraft,
-      updated_at: updatedAt
-    };
+    const updatedSession = applyDraftMutationWithHistory(session, nextDraft, {
+      source_type: "draft_replace",
+      reason: "replace",
+      source_text: toLabel,
+      user_id: userId
+    });
     await putObject(context.env, captureSessionKey(sessionId), updatedSession);
 
     return jsonResponse(context, {

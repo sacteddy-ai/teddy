@@ -22,6 +22,7 @@ export async function onRequest(context) {
       user_id: userId,
       status: "open",
       draft_items: [],
+      draft_history: [],
       turns: [],
       pending_review_item_ids: [],
       created_inventory_item_ids: [],
@@ -37,4 +38,3 @@ export async function onRequest(context) {
     return errorResponse(context, err?.message || String(err));
   }
 }
-
