@@ -427,12 +427,12 @@ const I18N = {
       "OpenAI 크레딧/쿼터가 부족해서 음성 인식이 막혔어요. 결제/크레딧을 추가하면 다시 동작합니다. 지금은 브라우저 음성 인식을 사용합니다.",
     voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
     voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
-    voice_draft_edit_hint: "이름 또는 수량만 말하세요.",
-    voice_ack_applied: "적용했어요.",
-    voice_ack_confirmed: "확인했어요.",
-    voice_ack_undone: "되돌렸어요.",
+    voice_draft_edit_hint: "\uC774\uB984 \uB610\uB294 \uC218\uB7C9\uB9CC \uB9D0\uC500\uD574 \uC8FC\uC138\uC694.",
+    voice_ack_applied: "\uC801\uC6A9\uD588\uC2B5\uB2C8\uB2E4.",
+    voice_ack_confirmed: "\uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.",
+    voice_ack_undone: "\uB418\uB3CC\uB838\uC2B5\uB2C8\uB2E4.",
     voice_undo_empty: "되돌릴 변경이 없어요.",
-    voice_ack_target_selected: "{index}번 선택. 이름 또는 수량을 말하세요.",
+    voice_ack_target_selected: "{index}\uBC88\uC744 \uC120\uD0DD\uD588\uC2B5\uB2C8\uB2E4. \uC774\uB984 \uB610\uB294 \uC218\uB7C9\uC744 \uB9D0\uC500\uD574 \uC8FC\uC138\uC694.",
     voice_wait_more: "계속 말하세요.",
     voice_already_applied: "이미 반영됐어요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
@@ -1406,6 +1406,26 @@ function stripLeadingSpeechFiller(rawText) {
   return text.trim();
 }
 
+function stripTrailingSpeechParticles(rawText) {
+  let text = String(rawText || "").trim();
+  if (!text) {
+    return "";
+  }
+  let changed = true;
+  while (changed && text) {
+    changed = false;
+    const next = text
+      .replace(/(?:\uC774\uB791|\uB791|\uD558\uACE0|\uC640|\uACFC)\s*$/u, "")
+      .replace(/(?:\uB3C4|\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)\s*$/u, "")
+      .trim();
+    if (next !== text) {
+      text = next;
+      changed = true;
+    }
+  }
+  return text;
+}
+
 function normalizeVoiceIngestKey(rawText) {
   return String(rawText || "")
     .toLowerCase()
@@ -1589,9 +1609,9 @@ function parseQuantityOnlyIntent(rawText) {
   }
 
   const patterns = [
-    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?/u,
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u,
-    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
+    /(?:\uAC1C\uC218|\uC218\uB7C9)(?:\uB294|\uC740|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?/u,
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u,
+    /(?:^|\s)([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u
   ];
   const segments = [text, ...text.split(/[.!?~\n]+/u).map((v) => String(v || "").trim()).filter(Boolean)];
   for (const seg of segments) {
@@ -1696,7 +1716,7 @@ function parseDraftQuantityIntent(rawText) {
   }
 
   const patterns = [
-    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694)?\s*[.!?~]*$/u
+    /^\s*(.+?)\s*(?:\uC740|\uB294|\uC774|\uAC00)?\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)?\s*(?:\uC57C|\uC785\uB2C8\uB2E4|\uC774\uC5D0\uC694|\uC608\uC694|\uC788\uB2E4|\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4)?\s*[.!?~]*$/u
   ];
   for (const pattern of patterns) {
     const m = text.match(pattern);
@@ -1712,6 +1732,109 @@ function parseDraftQuantityIntent(rawText) {
       continue;
     }
     return { ingredient_phrase: phrase, quantity };
+  }
+
+  return null;
+}
+
+function parseVisionOrdinalQuantityIntent(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return null;
+  }
+
+  const head = text.match(
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(.*)$/u
+  );
+  if (!head) {
+    return null;
+  }
+
+  const index = parseSpokenOrdinalIndexToken(head[1]);
+  if (!Number.isFinite(index) || index < 1) {
+    return null;
+  }
+
+  const tailRaw = String(head[2] || "").trim();
+  if (!tailRaw) {
+    return null;
+  }
+
+  let tail = tailRaw.replace(/^(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)\s*/u, "").trim();
+  if (!tail) {
+    return null;
+  }
+
+  let quantity = null;
+  const qtyOnly = parseQuantityOnlyIntent(tail);
+  if (qtyOnly?.quantity) {
+    quantity = qtyOnly.quantity;
+  } else {
+    const matches = Array.from(
+      tail.matchAll(/([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/gu)
+    );
+    if (matches.length > 0) {
+      const last = matches[matches.length - 1];
+      quantity = parseSpokenCountToken(last?.[1] || "");
+    }
+  }
+
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 200) {
+    return null;
+  }
+
+  let ingredientPhrase = "";
+  const phraseMatch = parseDraftQuantityIntent(tail);
+  if (phraseMatch?.ingredient_phrase) {
+    ingredientPhrase = stripTrailingSpeechParticles(String(phraseMatch.ingredient_phrase || "").trim());
+  } else {
+    const m = tail.match(/^(.*?)(?:[0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uAC1C|\uBCD1|\uBD09|\uBD09\uC9C0|\uCE94|\uD1B5|ea)/u);
+    if (m?.[1]) {
+      ingredientPhrase = stripTrailingSpeechParticles(String(m[1] || "").trim());
+    }
+  }
+
+  return {
+    index,
+    quantity,
+    ingredient_phrase: ingredientPhrase
+  };
+}
+
+function parseVisionAddAdjacentIntent(rawText) {
+  const text = stripLeadingSpeechFiller(rawText);
+  if (!text) {
+    return null;
+  }
+
+  const patterns = [
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:.+?\s+)?(?:\uC606(?:\uC5D0|\uC73C\uB85C)?|\uC606\uCABD(?:\uC5D0|\uC73C\uB85C)?)\s*(.+)\s*$/u,
+    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(.+)\s*(?:\uC606(?:\uC5D0|\uC73C\uB85C)?|\uC606\uCABD(?:\uC5D0|\uC73C\uB85C)?)\s*$/u
+  ];
+
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (!m) {
+      continue;
+    }
+    const index = parseSpokenOrdinalIndexToken(m[1]);
+    if (!Number.isFinite(index) || index < 1) {
+      continue;
+    }
+    let rawLabel = String(m[2] || "").trim();
+    rawLabel = rawLabel
+      .replace(/^(?:\uC5D0|\uC5D4)\s*/u, "")
+      .replace(
+        /\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C|\uB3C4)?\s*(?:\uC788\uC5B4|\uC788\uC5B4\uC694|\uC788\uC2B5\uB2C8\uB2E4|\uC57C|\uC774\uC5D0\uC694|\uC608\uC694|\uC785\uB2C8\uB2E4)\s*[.!?~]*$/u,
+        ""
+      )
+      .trim();
+    rawLabel = stripTrailingSpeechParticles(rawLabel);
+    const label = normalizeVisionLabelCandidate(extractVisionLabelFromSpeech(rawLabel) || rawLabel);
+    if (!label) {
+      continue;
+    }
+    return { index, label };
   }
 
   return null;
@@ -1766,14 +1889,45 @@ function parseVisionOrdinalTargetOnlyIntent(rawText) {
   if (parseVisionOrdinalRelabelIntent(text)) {
     return null;
   }
-  const m = text.match(
-    /^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C)?(?:\s+.*)?$/u
-  );
+  if (parseVisionOrdinalQuantityIntent(text)) {
+    return null;
+  }
+  if (parseVisionAddAdjacentIntent(text)) {
+    return null;
+  }
+  const m = text.match(/^\s*([0-9A-Za-z\uAC00-\uD7A3]{1,12})\s*(?:\uBC88(?:\s*\uD56D\uBAA9)?|\uBC88\uC9F8)\s*(.*)$/u);
   if (!m) {
     return null;
   }
   const index = parseSpokenOrdinalIndexToken(m[1]);
   if (!Number.isFinite(index) || index < 1) {
+    return null;
+  }
+  const tail = String(m[2] || "").trim();
+  if (!tail) {
+    return { index };
+  }
+  const compact = tail
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+  if (!compact) {
+    return { index };
+  }
+  const allowed = new Set([
+    "\uC120\uD0DD",
+    "\uC120\uD0DD\uD574",
+    "\uC120\uD0DD\uD574\uC918",
+    "\uC120\uD0DD\uD574\uC8FC\uC138\uC694",
+    "\uC9C0\uC815",
+    "\uC9C0\uC815\uD574",
+    "\uC218\uC815",
+    "\uD3B8\uC9D1",
+    "select",
+    "target",
+    "edit"
+  ]);
+  if (!allowed.has(compact)) {
     return null;
   }
   return { index };
@@ -1804,6 +1958,10 @@ function parseVisionOrdinalRelabelIntent(rawText) {
     const tail = String(m[2] || "").trim();
     if (!tail) {
       return null;
+    }
+    const qtyIntent = parseQuantityOnlyIntent(tail) || parseDraftQuantityIntent(tail);
+    if (qtyIntent?.quantity) {
+      continue;
     }
 
     const label =
@@ -2184,6 +2342,17 @@ function buildCustomVisionObject(bbox) {
   };
 }
 
+function insertVisionObjectAfterOrdinal(index, obj) {
+  const n = Number.parseInt(index, 10);
+  const arr = Array.isArray(visionObjectsCache) ? visionObjectsCache.slice() : [];
+  if (!obj || !Number.isFinite(n) || n < 1) {
+    visionObjectsCache = arr.concat(obj ? [obj] : []);
+    return;
+  }
+  const insertAt = clamp(n, 0, arr.length);
+  visionObjectsCache = [...arr.slice(0, insertAt), obj, ...arr.slice(insertAt)];
+}
+
 function clamp(value, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -2207,6 +2376,46 @@ function buildSpotBboxAt(nx, ny, rect) {
   const w = Math.max(0.02, right - left);
   const h = Math.max(0.02, bottom - top);
   return { x: left, y: top, w, h };
+}
+
+function buildAdjacentVoiceSpotBbox(referenceObj, nextObj = null) {
+  const refBbox = referenceObj?.bbox || null;
+  const refX = Number(refBbox?.x);
+  const refY = Number(refBbox?.y);
+  const refW = Number(refBbox?.w);
+  const refH = Number(refBbox?.h);
+  if (![refX, refY, refW, refH].every(Number.isFinite)) {
+    return { x: 0.45, y: 0.45, w: 0.1, h: 0.1 };
+  }
+
+  const refCenter = getVisionObjectCenter(referenceObj) || { x: refX + refW / 2, y: refY + refH / 2 };
+  let centerX = refCenter.x + refW * 1.05;
+  let centerY = refCenter.y;
+  let boxW = clamp(refW, 0.04, 0.2);
+  let boxH = clamp(refH, 0.04, 0.2);
+
+  const nxtBbox = nextObj?.bbox || null;
+  const nextCenter = getVisionObjectCenter(nextObj);
+  if (nextCenter && nxtBbox) {
+    const nxtW = clamp(Number(nxtBbox.w || refW), 0.04, 0.2);
+    const nxtH = clamp(Number(nxtBbox.h || refH), 0.04, 0.2);
+    const sameRow = Math.abs(nextCenter.y - refCenter.y) <= Math.max(refH, nxtH) * 0.9;
+    if (sameRow) {
+      centerX = (refCenter.x + nextCenter.x) / 2;
+      centerY = (refCenter.y + nextCenter.y) / 2;
+      boxW = clamp(Math.min(refW, nxtW), 0.04, 0.16);
+      boxH = clamp(Math.min(refH, nxtH), 0.04, 0.16);
+    }
+  }
+
+  const x = clamp(centerX - boxW / 2, 0, 1 - boxW);
+  const y = clamp(centerY - boxH / 2, 0, 1 - boxH);
+  return {
+    x: roundVisionBboxValue(x),
+    y: roundVisionBboxValue(y),
+    w: roundVisionBboxValue(boxW),
+    h: roundVisionBboxValue(boxH)
+  };
 }
 
 async function deleteVisionObject(objectId) {
@@ -3492,12 +3701,29 @@ function maybeShareVisionImageToRealtime(imageDataUrl, options = {}) {
   }
 }
 
+function buildRealtimePoliteInstructions() {
+  if (currentLang === "ko") {
+    return (
+      "당신은 Teddy 냉장고 음성 비서입니다. 사용자의 명령만 처리하세요. " +
+      "항상 한국어 존댓말로, 짧은 한 문장으로만 답하세요. " +
+      "불필요한 설명, 감탄, 제안, 잡담을 하지 마세요. " +
+      "모호할 때만 한 문장으로 짧게 되물으세요."
+    );
+  }
+  return (
+    "You are Teddy, a fridge command assistant. Follow user commands exactly. " +
+    "Reply with exactly one short confirmation sentence. " +
+    "No small talk, opinions, or suggestions. Ask one short clarification only when ambiguous."
+  );
+}
+
 async function fetchRealtimeClientSecret() {
   const result = await request("/api/v1/realtime/token", {
     method: "POST",
     body: JSON.stringify({
       // Keep the token lifetime short. The voice session uses it only for call setup.
-      expires_seconds: 600
+      expires_seconds: 600,
+      instructions: buildRealtimePoliteInstructions()
     })
   });
   const value = result?.data?.value || "";
@@ -3596,6 +3822,7 @@ async function startRealtimeVoice() {
           type: "session.update",
           session: {
             type: "realtime",
+            instructions: buildRealtimePoliteInstructions(),
             audio: {
               input: {
                 transcription: {
@@ -3848,6 +4075,91 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       })
       .then(() => {
         appendRealtimeLogLine("system", t("voice_draft_updated"));
+        setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
+  const adjacentAdd = parseVisionAddAdjacentIntent(text);
+  if (adjacentAdd) {
+    const targetObj = getVisionObjectByOrdinal(adjacentAdd.index);
+    if (!targetObj?.id) {
+      const msg = `target spot #${adjacentAdd.index} not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+    const nextObj = getVisionObjectByOrdinal(adjacentAdd.index + 1);
+    const bbox = buildAdjacentVoiceSpotBbox(targetObj, nextObj);
+    const addedObj = buildCustomVisionObject(bbox);
+    insertVisionObjectAfterOrdinal(adjacentAdd.index, addedObj);
+    visionSelectedObjectId = addedObj.id;
+    setVisionEditMode("select");
+    renderVisionObjectPreview({ skipImageReload: true });
+    closeVisionInlineEditor();
+    setVisionRelabelTarget(addedObj.id, { select: false, announce: false });
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("label_add", `${adjacentAdd.index}: ${adjacentAdd.label}`);
+
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => replaceVisionObjectLabel(addedObj.id, adjacentAdd.label, { quantity: 1, unit: "ea" }))
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = addedObj.id;
+        realtimeLastVisionTargetAt = Date.now();
+        setRealtimeStatus(t("voice_draft_updated"));
+        appendVoiceAck(t("voice_ack_applied"));
+      })
+      .catch((err) => {
+        const msg = err?.message || "unknown error";
+        visionObjectsCache = (visionObjectsCache || []).filter((o) => String(o?.id || "") !== String(addedObj.id || ""));
+        if (visionSelectedObjectId === addedObj.id) {
+          visionSelectedObjectId = "";
+        }
+        renderVisionObjectPreview({ skipImageReload: true });
+        appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+        setGlobalError(msg);
+        setCaptureError(msg);
+        setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      });
+    return;
+  }
+
+  const ordinalQty = parseVisionOrdinalQuantityIntent(text);
+  if (ordinalQty?.quantity) {
+    const targetObj = getVisionObjectByOrdinal(ordinalQty.index);
+    if (!targetObj?.id) {
+      const msg = `target spot #${ordinalQty.index} not found`;
+      appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+      setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+      return;
+    }
+    const key = String(targetObj?.ingredient_key || "").trim();
+    if (!key) {
+      appendRealtimeLogLine("label_ignored", text);
+      setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
+      return;
+    }
+    const displayName = ingredientLabel(key, targetObj?.ingredient_name || targetObj?.name || key);
+    setRealtimeStatus(tf("voice_heard", { text }));
+    appendRealtimeLogLine("draft(qty)", `${displayName} x${ordinalQty.quantity}`);
+    targetObj.quantity = ordinalQty.quantity;
+    setVisionRelabelTarget(targetObj.id, { select: true, announce: false });
+    realtimeIngestChain = realtimeIngestChain
+      .then(() => replaceCaptureDraftIngredient(key, displayName, ordinalQty.quantity, targetObj?.unit || "ea"))
+      .then(() => {
+        realtimeLastVisionRelabelAt = Date.now();
+        realtimeLastVisionTargetObjectId = targetObj.id;
+        realtimeLastVisionTargetAt = Date.now();
         setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
         appendVoiceAck(t("voice_ack_applied"));
       })
@@ -4494,9 +4806,17 @@ function handleRealtimeEvent(evt) {
     if (finalText) {
       realtimeUserTranscriptDelta = "";
       queueRealtimeSpeechIngest(finalText);
+      const commandLikeSpeech =
+        Boolean(parseVisionAddAdjacentIntent(finalText)) ||
+        Boolean(parseVisionOrdinalQuantityIntent(finalText)) ||
+        Boolean(parseVisionOrdinalRelabelIntent(finalText)) ||
+        Boolean(parseVisionOrdinalTargetOnlyIntent(finalText)) ||
+        Boolean(parseDraftQuantityIntent(finalText));
       const skipSpeechResponse =
         isAffirmationOnlySpeech(finalText) ||
         isUndoSpeech(finalText) ||
+        isVoiceConnectorOnlyText(finalText) ||
+        commandLikeSpeech ||
         (isEasyMode() && !getCaptureSessionId() && isLikelyFragmentaryInventoryText(finalText));
       if (!skipSpeechResponse) {
         requestRealtimeAssistantResponse({ minIntervalMs: 700 });

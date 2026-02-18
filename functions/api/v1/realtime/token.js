@@ -8,7 +8,7 @@ function resolveOpenAiRealtimeConfig(env) {
   const voice = safeString(env?.OPENAI_REALTIME_VOICE, "alloy");
   const instructions = safeString(
     env?.OPENAI_REALTIME_INSTRUCTIONS,
-    "You are Teddy, a fridge command assistant. Follow user commands exactly. Reply with exactly one short confirmation sentence (max 12 words). No small talk, opinions, or suggestions. If ambiguous, ask one short clarification question only."
+    "You are Teddy, a fridge command assistant. Follow user commands exactly. Reply with exactly one short confirmation sentence. No small talk, opinions, or suggestions. If user language is Korean, always speak in polite honorific Korean (존댓말). If ambiguous, ask one short clarification question only."
   );
   // Prefer the newer transcribe model by default; callers can override via env.
   const transcriptionModel = safeString(env?.OPENAI_REALTIME_TRANSCRIPTION_MODEL, "gpt-4o-mini-transcribe");
