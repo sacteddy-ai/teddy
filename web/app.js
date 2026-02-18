@@ -235,11 +235,11 @@ const I18N = {
       "OpenAI quota exceeded. Voice transcription via OpenAI is disabled until billing is enabled. Using browser speech recognition instead.",
     voice_draft_updated: "Draft updated from speech.",
     voice_draft_updated_ready: "Added to draft. Review and tap Finalize to save.",
-    voice_draft_edit_hint: "Say the new name, or say \"delete\" to remove it.",
-    voice_ack_applied: "Okay, applied.",
-    voice_ack_target_selected: "Spot {index} selected. Say the new name.",
-    voice_wait_more: "Okay, keep speaking.",
-    voice_already_applied: "Already applied. No duplicate update.",
+    voice_draft_edit_hint: "Say name or quantity.",
+    voice_ack_applied: "Applied.",
+    voice_ack_target_selected: "Spot {index} selected. Say name or quantity.",
+    voice_wait_more: "Keep speaking.",
+    voice_already_applied: "Already applied.",
     voice_draft_update_failed: "Draft update failed: {msg}",
     voice_inventory_updated: "Inventory updated: {summary}",
     voice_inventory_no_items: "I couldn't find any food items in that message.",
@@ -421,7 +421,11 @@ const I18N = {
       "OpenAI 크레딧/쿼터가 부족해서 음성 인식이 막혔어요. 결제/크레딧을 추가하면 다시 동작합니다. 지금은 브라우저 음성 인식을 사용합니다.",
     voice_draft_updated: "말한 내용을 드래프트에 반영했어요.",
     voice_draft_updated_ready: "드래프트에 추가했어요. 확인 후 '인벤토리로 확정'을 눌러주세요.",
-    voice_draft_edit_hint: "새 이름을 말하거나 '삭제'라고 말하면 이 항목이 사라져요.",
+    voice_draft_edit_hint: "이름 또는 수량만 말하세요.",
+    voice_ack_applied: "적용했어요.",
+    voice_ack_target_selected: "{index}번 선택. 이름 또는 수량을 말하세요.",
+    voice_wait_more: "계속 말하세요.",
+    voice_already_applied: "이미 반영됐어요.",
     voice_draft_update_failed: "드래프트 반영 실패: {msg}",
     voice_inventory_updated: "인벤토리 업데이트: {summary}",
     voice_inventory_no_items: "이 문장에서 식재료를 찾지 못했어요.",
@@ -1333,12 +1337,45 @@ function parseSpokenCountToken(rawToken) {
 }
 
 function normalizeVoiceIngredientPhrase(rawPhrase) {
-  return String(rawPhrase || "")
+  const base = String(rawPhrase || "")
     .toLowerCase()
+    .replace(
+      /(?:\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C|\uC640|\uACFC|\uB3C4|\uC57C|\uC694|\uC774\uACE0|\uB77C\uACE0|\uB77C\uB294|\uC774\uB791|\uB791)$/u,
+      ""
+    )
     .replace(/\s+/g, "")
     .replace(/[_-]/g, "")
     .replace(/[^\uAC00-\uD7A3a-z0-9]/g, "")
     .trim();
+  return base;
+}
+
+function isVoicePhraseMatchForVisionObject(rawPhrase, visionObj) {
+  const phrase = normalizeVoiceIngredientPhrase(rawPhrase);
+  if (!phrase) {
+    return false;
+  }
+
+  const candidates = [
+    ingredientLabel(
+      String(visionObj?.ingredient_key || ""),
+      String(visionObj?.ingredient_name || visionObj?.name || "")
+    ),
+    String(visionObj?.ingredient_name || ""),
+    String(visionObj?.name || ""),
+    String(visionObj?.ingredient_key || "").replace(/_/g, " ")
+  ];
+
+  for (const c of candidates) {
+    const normalized = normalizeVoiceIngredientPhrase(c);
+    if (!normalized) {
+      continue;
+    }
+    if (normalized === phrase || normalized.includes(phrase) || phrase.includes(normalized)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function stripLeadingSpeechFiller(rawText) {
@@ -3683,6 +3720,34 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
         realtimeLastVisionTargetAt = Date.now();
         realtimeIngestChain = realtimeIngestChain
           .then(() => replaceCaptureDraftIngredient(key, displayName, qtyOnly.quantity, obj?.unit || "ea"))
+          .then(() => {
+            realtimeLastVisionRelabelAt = Date.now();
+            setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
+            appendVoiceAck(t("voice_ack_applied"));
+          })
+          .catch((err) => {
+            const msg = err?.message || "unknown error";
+            appendRealtimeLogLine("system", tf("voice_draft_update_failed", { msg }));
+            setGlobalError(msg);
+            setCaptureError(msg);
+            setRealtimeStatus(tf("voice_draft_update_failed", { msg }));
+          });
+        return;
+      }
+    }
+
+    const targetedQty = parseDraftQuantityIntent(text);
+    if (targetedQty?.quantity) {
+      const obj = getVisionObjectById(targetId);
+      const key = String(obj?.ingredient_key || "").trim();
+      if (key && isVoicePhraseMatchForVisionObject(targetedQty.ingredient_phrase, obj)) {
+        const displayName = ingredientLabel(key, obj?.ingredient_name || obj?.name || key);
+        setRealtimeStatus(tf("voice_heard", { text }));
+        appendRealtimeLogLine("draft(qty)", `${displayName} x${targetedQty.quantity}`);
+        realtimeLastVisionTargetObjectId = targetId;
+        realtimeLastVisionTargetAt = Date.now();
+        realtimeIngestChain = realtimeIngestChain
+          .then(() => replaceCaptureDraftIngredient(key, displayName, targetedQty.quantity, obj?.unit || "ea"))
           .then(() => {
             realtimeLastVisionRelabelAt = Date.now();
             setRealtimeStatus(t(isEasyMode() ? "voice_draft_updated_ready" : "voice_draft_updated"));
