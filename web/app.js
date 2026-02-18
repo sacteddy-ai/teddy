@@ -26,6 +26,7 @@ let realtimeLoggedEventTypes = new Set();
 let realtimeTranscriptionFallbackApplied = false;
 let realtimeQuotaBlocked = false;
 let realtimeLastResponseCreateAt = 0;
+let realtimeResponseInProgress = false;
 
 let visionLastImageDataUrl = "";
 let visionObjectsCache = [];
@@ -1164,6 +1165,9 @@ function normalizeVisionLabelCandidate(rawLabel) {
   if (isAffirmationOnlySpeech(label)) {
     return "";
   }
+  if (isVoiceConnectorOnlyText(label)) {
+    return "";
+  }
 
   label = label.replace(/^(?:\uADF8\uB0E5|\uC74C|\uC5B4|\uC544|\uC800\uAE30)\s+/u, "");
   label = label.replace(/^[\s"'`]+|[\s"'`.,!?~]+$/g, "").trim();
@@ -1415,9 +1419,31 @@ function isVoiceConnectorOnlyText(rawText) {
   if (!text) {
     return true;
   }
-  return /^(?:그리고|그다음|다음|또|그리고요|그리고는|상온\s*재료(?:에는|는)?|냉장\s*재료(?:에는|는)?|냉동\s*재료(?:에는|는)?|재료(?:에는|는)?)$/u.test(
-    text
-  );
+  const compact = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+  if (!compact) {
+    return true;
+  }
+  const tokens = new Set([
+    "\uADF8\uB9AC\uACE0",
+    "\uADF8\uB9AC\uACE0\uC694",
+    "\uADF8\uB9AC\uACE0\uB294",
+    "\uADF8\uB2E4\uC74C",
+    "\uB2E4\uC74C",
+    "\uB610",
+    "\uADF8\uB7EC\uBA74",
+    "\uADF8\uB7F0\uB370",
+    "\uC7AC\uB8CC",
+    "\uC0C1\uC628\uC7AC\uB8CC",
+    "\uB0C9\uC7A5\uC7AC\uB8CC",
+    "\uB0C9\uB3D9\uC7AC\uB8CC",
+    "and",
+    "then",
+    "next"
+  ]);
+  return tokens.has(compact);
 }
 
 function isAffirmationOnlySpeech(rawText) {
@@ -3380,6 +3406,9 @@ function requestRealtimeAssistantResponse(options = {}) {
   if (!isRealtimeConnected() || realtimeQuotaBlocked) {
     return false;
   }
+  if (realtimeResponseInProgress) {
+    return false;
+  }
   const force = Boolean(options?.force);
   const minIntervalMs = Number(options?.minIntervalMs);
   const throttleMs = Number.isFinite(minIntervalMs) ? Math.max(0, Math.round(minIntervalMs)) : 700;
@@ -3388,10 +3417,12 @@ function requestRealtimeAssistantResponse(options = {}) {
     return false;
   }
   try {
+    realtimeResponseInProgress = true;
     realtimeSendEvent({ type: "response.create" });
     realtimeLastResponseCreateAt = now;
     return true;
   } catch {
+    realtimeResponseInProgress = false;
     return false;
   }
 }
@@ -3454,7 +3485,7 @@ function maybeShareVisionImageToRealtime(imageDataUrl, options = {}) {
     const autoRespond = Boolean(options?.autoRespond);
     if (autoRespond) {
       appendRealtimeLogLine("system", "Shared snapshot to agent.");
-      realtimeSendEvent({ type: "response.create" });
+      requestRealtimeAssistantResponse({ minIntervalMs: 0 });
     }
   } catch {
     // best-effort only
@@ -3705,6 +3736,7 @@ function stopRealtimeVoice() {
   realtimeLastAutoIngestKey = "";
   realtimeLastAutoIngestAt = 0;
   realtimeLastResponseCreateAt = 0;
+  realtimeResponseInProgress = false;
   realtimeLoggedEventTypes = new Set();
   realtimeTranscriptionFallbackApplied = false;
   visionRelabelTargetId = "";
@@ -3893,6 +3925,12 @@ function queueRealtimeSpeechIngest(finalText, sourceType = "realtime_voice") {
       appendRealtimeLogLine("confirm", text);
       setRealtimeStatus(t("voice_ready"));
       appendVoiceAck(t("voice_ack_confirmed"));
+      return;
+    }
+    if (isVoiceConnectorOnlyText(text)) {
+      appendRealtimeLogLine("label_ignored", text);
+      setRealtimeStatus(t("voice_draft_edit_hint"));
+      appendVoiceAck(t("voice_draft_edit_hint"));
       return;
     }
 
@@ -4367,8 +4405,25 @@ function handleRealtimeEvent(evt) {
 
   logRealtimeEventTypeOnce(type);
 
+  if (type === "response.created") {
+    realtimeResponseInProgress = true;
+    return;
+  }
+  if (
+    type === "response.done" ||
+    type === "response.failed" ||
+    type === "response.canceled" ||
+    type === "response.cancelled"
+  ) {
+    realtimeResponseInProgress = false;
+    return;
+  }
+
   if (type === "error") {
     const msg = evt?.error?.message || evt?.message || "Unknown realtime error.";
+    if (/active response in progress/i.test(String(msg || ""))) {
+      realtimeResponseInProgress = true;
+    }
     appendRealtimeLogLine("error", msg);
     setRealtimeStatus(tf("voice_error_prefix", { msg }));
     return;
