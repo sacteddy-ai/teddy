@@ -74,8 +74,8 @@ let notificationDayBounds = { min: 0, max: 60 };
 
 const I18N = {
   en: {
-    doc_title: "Teddy Fridge Dashboard",
-    hero_eyebrow: "Teddy MVP",
+    doc_title: "FRAI Fridge Dashboard",
+    hero_eyebrow: "FRAI MVP",
     hero_title: "Fridge Control Board",
     hero_subtitle: "Track ingredients, expiration risk, recipe options, and shopping actions in one place.",
     label_user_id: "User ID",
@@ -279,7 +279,7 @@ const I18N = {
   },
   ko: {
     doc_title: "Teddy ?됱옣怨???쒕낫??,
-    hero_eyebrow: "Teddy MVP",
+    hero_eyebrow: "FRAI MVP",
     hero_title: "?됱옣怨?而⑦듃濡?蹂대뱶",
     hero_subtitle: "?앹옱猷? ?좏넻湲고븳, ?덉떆?? ?λ낫湲곌퉴吏 ???붾㈃?먯꽌 愿由ы븯?몄슂.",
     label_user_id: "User ID",
