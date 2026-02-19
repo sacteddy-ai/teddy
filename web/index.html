@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -14,7 +14,7 @@
   </div>
 
   <main class="page">
-    <header class="hero">
+    <header class="hero" data-app-screen="home">
       <div class="brand-row">
         <div class="brand-mark" aria-hidden="true">
           <span class="brand-yolk"></span>
@@ -32,7 +32,7 @@
         <label for="languageSelect" data-i18n="label_language">Language</label>
         <select id="languageSelect">
           <option value="en">English</option>
-          <option value="ko">한국어</option>
+          <option value="ko">Korean</option>
         </select>
         <label class="checkline mode-toggle">
           <input id="easyModeToggle" type="checkbox" checked>
@@ -64,7 +64,7 @@
       </details>
     </header>
 
-    <section class="grid one-col mobile-app-home">
+    <section class="grid one-col mobile-app-home" data-app-screen="home">
       <article class="card mobile-home-card" id="mobileHomeCard">
         <div class="mobile-home-head">
           <div class="mobile-home-icon" aria-hidden="true">
@@ -78,14 +78,14 @@
 
         <div class="mobile-primary-actions">
           <button id="hubTakePhotoBtn" class="mobile-action-btn primary" type="button">
-            <span class="emoji" aria-hidden="true">📷</span>
+            <span class="emoji" aria-hidden="true">&#128247;</span>
             <span class="txt">
               <strong>Take Photo</strong>
               <small>Scan fridge by photo</small>
             </span>
           </button>
           <button id="hubTalkBtn" class="mobile-action-btn" type="button">
-            <span class="emoji" aria-hidden="true">💬</span>
+            <span class="emoji" aria-hidden="true">&#128172;</span>
             <span class="txt">
               <strong>Talk</strong>
               <small>Add items by voice</small>
@@ -95,22 +95,22 @@
 
         <div class="mobile-feature-row">
           <button id="hubNotificationsBtn" class="feature-chip" type="button">
-            <span aria-hidden="true">⏰</span>
+            <span aria-hidden="true">&#9200;</span>
             <span>Notifications</span>
           </button>
           <button id="hubRecipesBtn" class="feature-chip" type="button">
-            <span aria-hidden="true">🍳</span>
+            <span aria-hidden="true">&#127859;</span>
             <span>Recipe Recommendations</span>
           </button>
           <button id="hubShoppingBtn" class="feature-chip" type="button">
-            <span aria-hidden="true">🛒</span>
+            <span aria-hidden="true">&#128722;</span>
             <span>Shopping Suggestions</span>
           </button>
         </div>
       </article>
     </section>
 
-    <section class="grid stats-grid">
+    <section class="grid stats-grid" data-app-screen="home">
       <article class="card stat">
         <h2 data-i18n="stat_total">Total</h2>
         <p id="statTotal" class="stat-value">0</p>
@@ -129,7 +129,7 @@
       </article>
     </section>
 
-    <section class="grid two-col advanced-only">
+    <section class="grid two-col advanced-only" data-app-screen="home">
       <article class="card">
         <h2 data-i18n="add_item_title">Add Inventory Item</h2>
         <form id="createItemForm" class="form">
@@ -179,7 +179,7 @@
       </article>
     </section>
 
-    <section class="grid two-col">
+    <section class="grid two-col" data-app-screen="capture">
       <article class="card" id="captureCard">
         <h2 data-i18n="conversational_capture_title">Conversational Capture</h2>
         <div class="form">
@@ -340,7 +340,7 @@
       </article>
     </section>
 
-    <section class="grid one-col advanced-only">
+    <section class="grid one-col advanced-only" data-app-screen="capture">
       <article class="card">
         <div class="section-head">
           <h2 data-i18n="ingredient_review_queue_title">Ingredient Review Queue</h2>
@@ -351,8 +351,8 @@
       </article>
     </section>
 
-    <section class="grid two-col">
-      <article class="card" id="inventoryCard">
+    <section class="grid two-col" data-app-screen="inventory recipes">
+      <article class="card" id="inventoryCard" data-app-screen="inventory">
         <div class="section-head">
           <h2 data-i18n="inventory_title">Inventory</h2>
           <button id="reloadInventoryBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -380,7 +380,7 @@
         <div id="inventoryList" class="list"></div>
       </article>
 
-      <article class="card" id="recipesCard">
+      <article class="card" id="recipesCard" data-app-screen="recipes">
         <div class="section-head">
           <h2 data-i18n="recipes_title">Recipe Recommendations</h2>
           <button id="reloadRecipesBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -389,7 +389,7 @@
       </article>
     </section>
 
-    <section class="grid one-col">
+    <section class="grid one-col" data-app-screen="alerts">
       <article class="card" id="expiringCard">
         <div class="section-head">
           <h2 data-i18n="expiring_focus_title">Expiring Items (All Storage)</h2>
@@ -400,8 +400,8 @@
       </article>
     </section>
 
-    <section class="grid two-col">
-      <article class="card" id="shoppingCard">
+    <section class="grid two-col" data-app-screen="shopping alerts">
+      <article class="card" id="shoppingCard" data-app-screen="shopping">
         <div class="section-head">
           <h2 data-i18n="shopping_title">Shopping Suggestions</h2>
           <div class="inline-actions">
@@ -414,7 +414,7 @@
         <div id="shoppingDraftResult" class="muted"></div>
       </article>
 
-      <article class="card" id="notificationsCard">
+      <article class="card" id="notificationsCard" data-app-screen="alerts">
         <div class="section-head">
           <h2 data-i18n="notifications_title">Notifications</h2>
           <button id="reloadNotificationsBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -440,25 +440,29 @@
     </section>
 
     <nav class="app-bottom-nav" id="appBottomNav" aria-label="App navigation">
-      <button id="navTakePhotoBtn" class="app-nav-btn" type="button">
-        <span aria-hidden="true">📷</span>
-        <small>Photo</small>
+      <button id="navHomeBtn" class="app-nav-btn" type="button" data-screen="home">
+        <span aria-hidden="true">&#127968;</span>
+        <small>Home</small>
       </button>
-      <button id="navTalkBtn" class="app-nav-btn" type="button">
-        <span aria-hidden="true">💬</span>
-        <small>Talk</small>
+      <button id="navCaptureBtn" class="app-nav-btn" type="button" data-screen="capture">
+        <span aria-hidden="true">&#128247;</span>
+        <small>Capture</small>
       </button>
-      <button id="navNotificationsBtn" class="app-nav-btn" type="button">
-        <span aria-hidden="true">⏰</span>
-        <small>Alerts</small>
+      <button id="navInventoryBtn" class="app-nav-btn" type="button" data-screen="inventory">
+        <span aria-hidden="true">&#128230;</span>
+        <small>Inventory</small>
       </button>
-      <button id="navRecipesBtn" class="app-nav-btn" type="button">
-        <span aria-hidden="true">🍳</span>
+      <button id="navRecipesBtn" class="app-nav-btn" type="button" data-screen="recipes">
+        <span aria-hidden="true">&#127859;</span>
         <small>Recipes</small>
       </button>
-      <button id="navShoppingBtn" class="app-nav-btn" type="button">
-        <span aria-hidden="true">🛒</span>
+      <button id="navShoppingBtn" class="app-nav-btn" type="button" data-screen="shopping">
+        <span aria-hidden="true">&#128722;</span>
         <small>Shop</small>
+      </button>
+      <button id="navAlertsBtn" class="app-nav-btn" type="button" data-screen="alerts">
+        <span aria-hidden="true">&#9200;</span>
+        <small>Alerts</small>
       </button>
     </nav>
   </main>
@@ -493,3 +497,4 @@
   <script src="/app.js"></script>
 </body>
 </html>
+

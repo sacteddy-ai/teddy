@@ -1178,7 +1178,7 @@ body.easy .inventory-select {
   border-radius: 18px;
   padding: 8px 6px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 4px;
   backdrop-filter: blur(6px);
 }
@@ -1201,6 +1201,11 @@ body.easy .inventory-select {
   color: #2c2c2c;
 }
 
+.app-nav-btn.active {
+  background: #fde74c;
+  color: #2c2c2c;
+}
+
 .app-nav-btn span {
   font-size: 1.04rem;
   line-height: 1;
@@ -1209,6 +1214,21 @@ body.easy .inventory-select {
 .app-nav-btn small {
   font-size: 0.64rem;
   line-height: 1.1;
+}
+
+.page.screen-switching {
+  animation: appScreenIn 0.2s ease;
+}
+
+@keyframes appScreenIn {
+  from {
+    opacity: 0.72;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 980px) {

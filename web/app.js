@@ -71,6 +71,11 @@ let shoppingItemsCache = [];
 let shoppingAutoOnly = false;
 let notificationDayOffsets = [3];
 let notificationDayBounds = { min: 0, max: 60 };
+const APP_SCREEN_STORAGE_KEY = "teddy_app_screen";
+const APP_SCREEN_HASH_PREFIX = "#/";
+const APP_SCREENS = ["home", "capture", "inventory", "recipes", "shopping", "alerts"];
+const APP_SCREEN_SET = new Set(APP_SCREENS);
+let currentAppScreen = "home";
 
 const I18N = {
   en: {
@@ -594,20 +599,81 @@ function applyI18n() {
   });
 }
 
-function jumpToSectionCard(cardId) {
-  const node = $(cardId);
-  if (!node) {
+function normalizeAppScreenName(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return APP_SCREEN_SET.has(key) ? key : "home";
+}
+
+function parseAppScreenFromHash() {
+  const raw = String(window.location.hash || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const cleaned = raw
+    .replace(/^#\/?/, "")
+    .replace(/^app\/?/i, "")
+    .split(/[?&]/)[0]
+    .trim();
+  return normalizeAppScreenName(cleaned);
+}
+
+function animateAppScreenSwitch() {
+  const page = document.querySelector(".page");
+  if (!page) {
     return;
   }
-  try {
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch {
-    node.scrollIntoView();
+  page.classList.remove("screen-switching");
+  void page.offsetWidth;
+  page.classList.add("screen-switching");
+  window.setTimeout(() => {
+    page.classList.remove("screen-switching");
+  }, 220);
+}
+
+function setAppScreen(screen, options = {}) {
+  const next = normalizeAppScreenName(screen);
+  const updateHash = options.updateHash !== false;
+  const animate = options.animate !== false;
+  const replaceHash = options.replaceHash === true;
+  const force = options.force === true;
+
+  if (!force && next === currentAppScreen) {
+    return;
   }
-  node.classList.add("focus-jump");
-  setTimeout(() => {
-    node.classList.remove("focus-jump");
-  }, 900);
+
+  currentAppScreen = next;
+  document.body.dataset.appScreen = next;
+  localStorage.setItem(APP_SCREEN_STORAGE_KEY, next);
+
+  document.querySelectorAll("[data-app-screen]").forEach((node) => {
+    const allowed = String(node.getAttribute("data-app-screen") || "")
+      .split(/\s+/)
+      .map((v) => normalizeAppScreenName(v))
+      .includes(next);
+    node.hidden = !allowed;
+    node.classList.toggle("screen-active", allowed);
+  });
+
+  document.querySelectorAll(".app-nav-btn[data-screen]").forEach((btn) => {
+    const target = normalizeAppScreenName(btn.getAttribute("data-screen"));
+    btn.classList.toggle("active", target === next);
+  });
+
+  if (updateHash) {
+    const targetHash = `${APP_SCREEN_HASH_PREFIX}${next}`;
+    if (window.location.hash !== targetHash) {
+      if (replaceHash) {
+        window.history.replaceState(null, "", targetHash);
+      } else {
+        window.history.pushState(null, "", targetHash);
+      }
+    }
+  }
+
+  if (animate) {
+    animateAppScreenSwitch();
+  }
+  window.scrollTo(0, 0);
 }
 
 function bindMobileHomeActions() {
@@ -615,7 +681,7 @@ function bindMobileHomeActions() {
   if (takePhotoBtn) {
     takePhotoBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      jumpToSectionCard("captureCard");
+      setAppScreen("capture");
       const fileInput = $("captureVisionImageInput");
       if (fileInput) {
         fileInput.click();
@@ -627,7 +693,7 @@ function bindMobileHomeActions() {
   if (talkBtn) {
     talkBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      jumpToSectionCard("captureCard");
+      setAppScreen("capture");
       const quickTalkBtn = $("quickTalkBtn");
       if (quickTalkBtn) {
         quickTalkBtn.click();
@@ -639,7 +705,7 @@ function bindMobileHomeActions() {
   if (notificationsBtn) {
     notificationsBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      jumpToSectionCard("notificationsCard");
+      setAppScreen("alerts");
       const reloadBtn = $("reloadNotificationsBtn");
       if (reloadBtn) {
         reloadBtn.click();
@@ -651,7 +717,7 @@ function bindMobileHomeActions() {
   if (recipesBtn) {
     recipesBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      jumpToSectionCard("recipesCard");
+      setAppScreen("recipes");
       const reloadBtn = $("reloadRecipesBtn");
       if (reloadBtn) {
         reloadBtn.click();
@@ -663,7 +729,7 @@ function bindMobileHomeActions() {
   if (shoppingBtn) {
     shoppingBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      jumpToSectionCard("shoppingCard");
+      setAppScreen("shopping");
       const reloadBtn = $("reloadShoppingBtn");
       if (reloadBtn) {
         reloadBtn.click();
@@ -673,36 +739,30 @@ function bindMobileHomeActions() {
 }
 
 function bindAppBottomNav() {
-  const bind = (id, handler) => {
-    const el = $(id);
-    if (!el) {
-      return;
-    }
-    el.addEventListener("click", (event) => {
+  document.querySelectorAll(".app-nav-btn[data-screen]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
       event.preventDefault();
-      handler();
+      const target = normalizeAppScreenName(btn.getAttribute("data-screen"));
+      setAppScreen(target);
+      if (target === "recipes" && $("reloadRecipesBtn")) {
+        $("reloadRecipesBtn").click();
+      } else if (target === "shopping" && $("reloadShoppingBtn")) {
+        $("reloadShoppingBtn").click();
+      } else if (target === "alerts" && $("reloadNotificationsBtn")) {
+        $("reloadNotificationsBtn").click();
+      } else if (target === "inventory" && $("reloadInventoryBtn")) {
+        $("reloadInventoryBtn").click();
+      }
     });
-  };
+  });
 
-  bind("navTakePhotoBtn", () => {
-    const btn = $("hubTakePhotoBtn");
-    if (btn) {
-      btn.click();
+  window.addEventListener("hashchange", () => {
+    const target = parseAppScreenFromHash();
+    if (!target || target === currentAppScreen) {
       return;
     }
-    jumpToSectionCard("captureCard");
+    setAppScreen(target, { updateHash: false, animate: false, force: true });
   });
-  bind("navTalkBtn", () => {
-    const btn = $("hubTalkBtn");
-    if (btn) {
-      btn.click();
-      return;
-    }
-    jumpToSectionCard("captureCard");
-  });
-  bind("navNotificationsBtn", () => jumpToSectionCard("notificationsCard"));
-  bind("navRecipesBtn", () => jumpToSectionCard("recipesCard"));
-  bind("navShoppingBtn", () => jumpToSectionCard("shoppingCard"));
 }
 
 function statusLabel(status) {
@@ -7882,6 +7942,14 @@ function init() {
   window.addEventListener("beforeunload", stopLiveCamera);
   window.addEventListener("beforeunload", stopRealtimeVoice);
   bindEvents();
+  const hashScreen = parseAppScreenFromHash();
+  const storedScreen = normalizeAppScreenName(localStorage.getItem(APP_SCREEN_STORAGE_KEY) || "home");
+  setAppScreen(hashScreen || storedScreen, {
+    updateHash: true,
+    replaceHash: true,
+    animate: false,
+    force: true
+  });
   refreshAll();
 }
 
