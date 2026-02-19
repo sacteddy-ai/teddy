@@ -672,6 +672,39 @@ function bindMobileHomeActions() {
   }
 }
 
+function bindAppBottomNav() {
+  const bind = (id, handler) => {
+    const el = $(id);
+    if (!el) {
+      return;
+    }
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      handler();
+    });
+  };
+
+  bind("navTakePhotoBtn", () => {
+    const btn = $("hubTakePhotoBtn");
+    if (btn) {
+      btn.click();
+      return;
+    }
+    jumpToSectionCard("captureCard");
+  });
+  bind("navTalkBtn", () => {
+    const btn = $("hubTalkBtn");
+    if (btn) {
+      btn.click();
+      return;
+    }
+    jumpToSectionCard("captureCard");
+  });
+  bind("navNotificationsBtn", () => jumpToSectionCard("notificationsCard"));
+  bind("navRecipesBtn", () => jumpToSectionCard("recipesCard"));
+  bind("navShoppingBtn", () => jumpToSectionCard("shoppingCard"));
+}
+
 function statusLabel(status) {
   const key = String(status || "").trim().toLowerCase() || "unknown";
   return STATUS_LABELS[currentLang]?.[key] ?? STATUS_LABELS.en[key] ?? key;
@@ -7819,6 +7852,7 @@ function bindEvents() {
   });
 
   bindMobileHomeActions();
+  bindAppBottomNav();
 }
 
 function init() {
