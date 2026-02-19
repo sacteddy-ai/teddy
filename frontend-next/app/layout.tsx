@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Teddy Next Dashboard",
-  description: "Next.js + TypeScript migration dashboard for Teddy MVP"
+  title: "Frai | Fridge + AI",
+  description: "Frai mobile-first web app built with Next.js + TypeScript"
 };
 
 type Props = {
