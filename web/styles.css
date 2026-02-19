@@ -1256,8 +1256,8 @@ body.easy .inventory-select {
   border-radius: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
   backdrop-filter: none;
 }
 
@@ -1290,7 +1290,7 @@ body.easy .inventory-select {
 }
 
 .app-nav-btn small {
-  font-size: 0.84rem;
+  font-size: 0.76rem;
   line-height: 1.1;
 }
 

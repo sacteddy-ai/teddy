@@ -73,9 +73,10 @@ let notificationDayOffsets = [3];
 let notificationDayBounds = { min: 0, max: 60 };
 const APP_SCREEN_STORAGE_KEY = "teddy_app_screen";
 const APP_SCREEN_HASH_PREFIX = "#/";
-const APP_SCREENS = ["home", "capture", "inventory", "recipes", "shopping", "alerts"];
+const APP_SCREENS = ["welcome", "home", "capture", "inventory", "recipes", "shopping", "alerts"];
 const APP_SCREEN_SET = new Set(APP_SCREENS);
 const LEGACY_HASH_SCREEN_MAP = {
+  welcome: "welcome",
   mobilehomecard: "home",
   home: "home",
   capture: "capture",
@@ -98,7 +99,7 @@ const LEGACY_HASH_SCREEN_MAP = {
   expiring: "alerts",
   expiringcard: "alerts"
 };
-let currentAppScreen = "home";
+let currentAppScreen = "welcome";
 
 const I18N = {
   en: {
@@ -777,9 +778,12 @@ function bindMobileHomeActions() {
   if (exploreBtn) {
     exploreBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      setAppScreen("inventory");
-      if ($("reloadInventoryBtn")) {
-        $("reloadInventoryBtn").click();
+      setAppScreen("home");
+      if ($("reloadRecipesBtn")) {
+        $("reloadRecipesBtn").click();
+      }
+      if ($("reloadExpiringFocusBtn")) {
+        $("reloadExpiringFocusBtn").click();
       }
     });
   }
@@ -7990,10 +7994,10 @@ function init() {
   window.addEventListener("beforeunload", stopRealtimeVoice);
   bindEvents();
   const hashScreen = parseAppScreenFromHash();
-  const storedScreen = normalizeAppScreenName(localStorage.getItem(APP_SCREEN_STORAGE_KEY) || "home");
-  const initialScreen = hashScreen || (isEasyMode() ? "home" : storedScreen);
+  const storedScreen = normalizeAppScreenName(localStorage.getItem(APP_SCREEN_STORAGE_KEY) || "welcome");
+  const initialScreen = hashScreen || (isEasyMode() ? "welcome" : storedScreen);
   if (isEasyMode() && !hashScreen) {
-    localStorage.setItem(APP_SCREEN_STORAGE_KEY, "home");
+    localStorage.setItem(APP_SCREEN_STORAGE_KEY, "welcome");
   }
   setAppScreen(initialScreen, {
     updateHash: true,

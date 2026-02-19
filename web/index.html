@@ -6,7 +6,7 @@
   <title>FRAI Fridge Dashboard</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="easy">
+<body class="easy" data-app-screen="welcome">
   <div class="background-blobs" aria-hidden="true">
     <div class="blob blob-a"></div>
     <div class="blob blob-b"></div>
@@ -64,7 +64,7 @@
       </details>
     </header>
 
-    <section class="grid one-col mobile-app-home" data-app-screen="home">
+    <section class="grid one-col mobile-app-home" data-app-screen="welcome">
       <article class="card mobile-home-card" id="mobileHomeCard">
         <div class="mobile-status-bar" aria-hidden="true">
           <span class="time">9:41</span>
@@ -356,7 +356,7 @@
       </article>
     </section>
 
-    <section class="grid two-col" data-app-screen="inventory recipes">
+    <section class="grid two-col" data-app-screen="home inventory recipes">
       <article class="card" id="inventoryCard" data-app-screen="inventory">
         <div class="section-head">
           <h2 data-i18n="inventory_title">Inventory</h2>
@@ -385,7 +385,7 @@
         <div id="inventoryList" class="list"></div>
       </article>
 
-      <article class="card" id="recipesCard" data-app-screen="recipes">
+      <article class="card" id="recipesCard" data-app-screen="home recipes">
         <div class="section-head">
           <h2 data-i18n="recipes_title">Recipe Recommendations</h2>
           <button id="reloadRecipesBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -394,7 +394,7 @@
       </article>
     </section>
 
-    <section class="grid one-col" data-app-screen="alerts">
+    <section class="grid one-col" data-app-screen="home alerts">
       <article class="card" id="expiringCard">
         <div class="section-head">
           <h2 data-i18n="expiring_focus_title">Expiring Items (All Storage)</h2>
@@ -445,17 +445,25 @@
     </section>
 
     <nav class="app-bottom-nav" id="appBottomNav" aria-label="App navigation">
-      <button id="navAlertsBtn" class="app-nav-btn" type="button" data-screen="alerts">
-        <span aria-hidden="true">&#9200;</span>
-        <small>유통기한 알림</small>
+      <button id="navHomeBtn" class="app-nav-btn" type="button" data-screen="home">
+        <span aria-hidden="true">&#127968;</span>
+        <small>홈</small>
+      </button>
+      <button id="navInventoryBtn" class="app-nav-btn" type="button" data-screen="inventory">
+        <span aria-hidden="true">&#128717;</span>
+        <small>재고</small>
       </button>
       <button id="navRecipesBtn" class="app-nav-btn" type="button" data-screen="recipes">
         <span aria-hidden="true">&#127859;</span>
-        <small>레시피 추천</small>
+        <small>레시피</small>
       </button>
       <button id="navShoppingBtn" class="app-nav-btn" type="button" data-screen="shopping">
         <span aria-hidden="true">&#128722;</span>
-        <small>쇼핑 연결</small>
+        <small>쇼핑</small>
+      </button>
+      <button id="navAlertsBtn" class="app-nav-btn" type="button" data-screen="alerts">
+        <span aria-hidden="true">&#9881;</span>
+        <small>설정</small>
       </button>
     </nav>
   </main>
