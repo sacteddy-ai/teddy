@@ -75,6 +75,29 @@ const APP_SCREEN_STORAGE_KEY = "teddy_app_screen";
 const APP_SCREEN_HASH_PREFIX = "#/";
 const APP_SCREENS = ["home", "capture", "inventory", "recipes", "shopping", "alerts"];
 const APP_SCREEN_SET = new Set(APP_SCREENS);
+const LEGACY_HASH_SCREEN_MAP = {
+  mobilehomecard: "home",
+  home: "home",
+  capture: "capture",
+  capturecard: "capture",
+  capturedraftcard: "capture",
+  photo: "capture",
+  talk: "capture",
+  inventory: "inventory",
+  inventorycard: "inventory",
+  recipe: "recipes",
+  recipes: "recipes",
+  recipescard: "recipes",
+  shopping: "shopping",
+  shop: "shopping",
+  shoppingcard: "shopping",
+  alerts: "alerts",
+  alert: "alerts",
+  notifications: "alerts",
+  notificationscard: "alerts",
+  expiring: "alerts",
+  expiringcard: "alerts"
+};
 let currentAppScreen = "home";
 
 const I18N = {
@@ -614,7 +637,28 @@ function parseAppScreenFromHash() {
     .replace(/^app\/?/i, "")
     .split(/[?&]/)[0]
     .trim();
-  return normalizeAppScreenName(cleaned);
+
+  if (APP_SCREEN_SET.has(cleaned)) {
+    return cleaned;
+  }
+
+  const normalizedKey = String(cleaned).toLowerCase().replace(/[^a-z0-9_/-]/g, "");
+  if (APP_SCREEN_SET.has(normalizedKey)) {
+    return normalizedKey;
+  }
+  if (LEGACY_HASH_SCREEN_MAP[normalizedKey]) {
+    return LEGACY_HASH_SCREEN_MAP[normalizedKey];
+  }
+
+  const firstSegment = normalizedKey.split("/")[0];
+  if (APP_SCREEN_SET.has(firstSegment)) {
+    return firstSegment;
+  }
+  if (LEGACY_HASH_SCREEN_MAP[firstSegment]) {
+    return LEGACY_HASH_SCREEN_MAP[firstSegment];
+  }
+
+  return "";
 }
 
 function animateAppScreenSwitch() {
