@@ -133,13 +133,17 @@ body.easy .draft-action-btn {
   z-index: 1;
   width: min(calc(100% - 16px), 390px);
   margin: 0 auto;
-  min-height: 844px;
+  height: min(844px, calc(100vh - 36px));
+  max-height: 844px;
   padding: 0 0 92px;
   background: #fffef7;
   border-radius: 44px;
   border: 10px solid #1a1a1a;
   box-shadow: 0 24px 60px rgba(20, 20, 20, 0.2);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .hero {
@@ -1320,6 +1324,8 @@ body.easy .inventory-select {
 
   .page {
     width: 100%;
+    height: 100vh;
+    max-height: none;
     min-height: 100vh;
     border: none;
     border-radius: 0;

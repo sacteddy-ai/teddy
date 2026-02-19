@@ -778,12 +778,9 @@ function bindMobileHomeActions() {
   if (exploreBtn) {
     exploreBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      setAppScreen("home");
-      if ($("reloadRecipesBtn")) {
-        $("reloadRecipesBtn").click();
-      }
-      if ($("reloadExpiringFocusBtn")) {
-        $("reloadExpiringFocusBtn").click();
+      setAppScreen("inventory");
+      if ($("reloadInventoryBtn")) {
+        $("reloadInventoryBtn").click();
       }
     });
   }
