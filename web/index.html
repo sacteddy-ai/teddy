@@ -66,45 +66,50 @@
 
     <section class="grid one-col mobile-app-home" data-app-screen="home">
       <article class="card mobile-home-card" id="mobileHomeCard">
-        <div class="mobile-home-head">
-          <div class="mobile-home-icon" aria-hidden="true">
-            <span class="mobile-home-yolk"></span>
-          </div>
-          <div class="mobile-home-copy">
-            <h2 class="mobile-home-title">Frai</h2>
-            <p class="mobile-home-subtitle">Frai helps you organize your fridge.</p>
-          </div>
+        <div class="mobile-status-bar" aria-hidden="true">
+          <span class="time">9:41</span>
+          <span class="icons">&#128246; &#128251; &#128267;</span>
         </div>
+        <div class="mobile-home-head">
+          <div class="mobile-home-icon" aria-hidden="true"><span class="mobile-home-yolk"></span></div>
+          <h2 class="mobile-home-title">Frai</h2>
+          <p class="mobile-home-subtitle">Frai가 냉장고를 정리해줄게요 &#128151;</p>
+        </div>
+
+        <p class="mobile-question">냉장고 재료를 어떻게 추가할까요?</p>
 
         <div class="mobile-primary-actions">
           <button id="hubTakePhotoBtn" class="mobile-action-btn primary" type="button">
             <span class="emoji" aria-hidden="true">&#128247;</span>
             <span class="txt">
-              <strong>Take Photo</strong>
-              <small>Scan fridge by photo</small>
+              <strong>냉장고 사진 찍기</strong>
+              <small>사진 한 장으로 재료를 바로 인식해요</small>
             </span>
           </button>
           <button id="hubTalkBtn" class="mobile-action-btn" type="button">
             <span class="emoji" aria-hidden="true">&#128172;</span>
             <span class="txt">
-              <strong>Talk</strong>
-              <small>Add items by voice</small>
+              <strong>대화로 추가하기</strong>
+              <small>말하듯 입력하면 AI가 정리해드려요</small>
             </span>
           </button>
         </div>
 
+        <div class="mobile-divider"><span>또는</span></div>
+        <button id="hubExploreBtn" class="mobile-explore-btn" type="button">일단 둘러볼게요</button>
+
         <div class="mobile-feature-row">
           <button id="hubNotificationsBtn" class="feature-chip" type="button">
             <span aria-hidden="true">&#9200;</span>
-            <span>Notifications</span>
+            <span>유통기한 알림</span>
           </button>
           <button id="hubRecipesBtn" class="feature-chip" type="button">
             <span aria-hidden="true">&#127859;</span>
-            <span>Recipe Recommendations</span>
+            <span>레시피 추천</span>
           </button>
           <button id="hubShoppingBtn" class="feature-chip" type="button">
             <span aria-hidden="true">&#128722;</span>
-            <span>Shopping Suggestions</span>
+            <span>쇼핑 연결</span>
           </button>
         </div>
       </article>
@@ -440,29 +445,17 @@
     </section>
 
     <nav class="app-bottom-nav" id="appBottomNav" aria-label="App navigation">
-      <button id="navHomeBtn" class="app-nav-btn" type="button" data-screen="home">
-        <span aria-hidden="true">&#127968;</span>
-        <small>Home</small>
-      </button>
-      <button id="navCaptureBtn" class="app-nav-btn" type="button" data-screen="capture">
-        <span aria-hidden="true">&#128247;</span>
-        <small>Capture</small>
-      </button>
-      <button id="navInventoryBtn" class="app-nav-btn" type="button" data-screen="inventory">
-        <span aria-hidden="true">&#128230;</span>
-        <small>Inventory</small>
+      <button id="navAlertsBtn" class="app-nav-btn" type="button" data-screen="alerts">
+        <span aria-hidden="true">&#9200;</span>
+        <small>유통기한 알림</small>
       </button>
       <button id="navRecipesBtn" class="app-nav-btn" type="button" data-screen="recipes">
         <span aria-hidden="true">&#127859;</span>
-        <small>Recipes</small>
+        <small>레시피 추천</small>
       </button>
       <button id="navShoppingBtn" class="app-nav-btn" type="button" data-screen="shopping">
         <span aria-hidden="true">&#128722;</span>
-        <small>Shop</small>
-      </button>
-      <button id="navAlertsBtn" class="app-nav-btn" type="button" data-screen="alerts">
-        <span aria-hidden="true">&#9200;</span>
-        <small>Alerts</small>
+        <small>쇼핑 연결</small>
       </button>
     </nav>
   </main>

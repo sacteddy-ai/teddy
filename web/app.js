@@ -780,6 +780,17 @@ function bindMobileHomeActions() {
       }
     });
   }
+
+  const exploreBtn = $("hubExploreBtn");
+  if (exploreBtn) {
+    exploreBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      setAppScreen("inventory");
+      if ($("reloadInventoryBtn")) {
+        $("reloadInventoryBtn").click();
+      }
+    });
+  }
 }
 
 function bindAppBottomNav() {
