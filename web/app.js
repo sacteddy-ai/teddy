@@ -547,15 +547,7 @@ function detectDefaultEasyMode() {
   if (raw === "1" || raw === "true" || raw === "on") {
     return true;
   }
-
-  const stored = String(localStorage.getItem(EASY_MODE_STORAGE_KEY) || "").trim().toLowerCase();
-  if (stored === "0" || stored === "false" || stored === "off") {
-    return false;
-  }
-  if (stored === "1" || stored === "true" || stored === "on") {
-    return true;
-  }
-
+  // Default to easy mode unless explicitly disabled by query.
   return true;
 }
 
@@ -7999,7 +7991,11 @@ function init() {
   bindEvents();
   const hashScreen = parseAppScreenFromHash();
   const storedScreen = normalizeAppScreenName(localStorage.getItem(APP_SCREEN_STORAGE_KEY) || "home");
-  setAppScreen(hashScreen || storedScreen, {
+  const initialScreen = hashScreen || (isEasyMode() ? "home" : storedScreen);
+  if (isEasyMode() && !hashScreen) {
+    localStorage.setItem(APP_SCREEN_STORAGE_KEY, "home");
+  }
+  setAppScreen(initialScreen, {
     updateHash: true,
     replaceHash: true,
     animate: false,
