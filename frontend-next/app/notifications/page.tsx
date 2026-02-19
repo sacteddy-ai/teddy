@@ -67,7 +67,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <FraiPhoneFrame navKey="notifications">
+    <FraiPhoneFrame navKey="settings">
       <div className="frai-page">
         <section className="frai-header-hero compact">
           <h2>Notifications</h2>
@@ -109,3 +109,4 @@ export default function NotificationsPage() {
     </FraiPhoneFrame>
   );
 }
+
