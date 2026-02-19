@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Teddy Fridge Dashboard</title>
+  <title>FRAI Fridge Dashboard</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="easy">
@@ -63,6 +63,52 @@
         </div>
       </details>
     </header>
+
+    <section class="grid one-col mobile-app-home">
+      <article class="card mobile-home-card" id="mobileHomeCard">
+        <div class="mobile-home-head">
+          <div class="mobile-home-icon" aria-hidden="true">
+            <span class="mobile-home-yolk"></span>
+          </div>
+          <div class="mobile-home-copy">
+            <h2 class="mobile-home-title">Frai</h2>
+            <p class="mobile-home-subtitle">Frai helps you organize your fridge.</p>
+          </div>
+        </div>
+
+        <div class="mobile-primary-actions">
+          <button id="hubTakePhotoBtn" class="mobile-action-btn primary" type="button">
+            <span class="emoji" aria-hidden="true">📷</span>
+            <span class="txt">
+              <strong>Take Photo</strong>
+              <small>Scan fridge by photo</small>
+            </span>
+          </button>
+          <button id="hubTalkBtn" class="mobile-action-btn" type="button">
+            <span class="emoji" aria-hidden="true">💬</span>
+            <span class="txt">
+              <strong>Talk</strong>
+              <small>Add items by voice</small>
+            </span>
+          </button>
+        </div>
+
+        <div class="mobile-feature-row">
+          <button id="hubNotificationsBtn" class="feature-chip" type="button">
+            <span aria-hidden="true">⏰</span>
+            <span>Notifications</span>
+          </button>
+          <button id="hubRecipesBtn" class="feature-chip" type="button">
+            <span aria-hidden="true">🍳</span>
+            <span>Recipe Recommendations</span>
+          </button>
+          <button id="hubShoppingBtn" class="feature-chip" type="button">
+            <span aria-hidden="true">🛒</span>
+            <span>Shopping Suggestions</span>
+          </button>
+        </div>
+      </article>
+    </section>
 
     <section class="grid stats-grid">
       <article class="card stat">
@@ -134,7 +180,7 @@
     </section>
 
     <section class="grid two-col">
-      <article class="card">
+      <article class="card" id="captureCard">
         <h2 data-i18n="conversational_capture_title">Conversational Capture</h2>
         <div class="form">
           <div class="inline-fields easy-only">
@@ -286,7 +332,7 @@
           <div id="captureMeta" class="muted"></div>
         </div>
       </article>
-      <article class="card">
+      <article class="card" id="captureDraftCard">
         <h2 data-i18n="capture_draft_title">Capture Draft</h2>
         <div id="captureDraftList" class="list"></div>
         <h3 class="subhead" data-i18n="pending_confirmations_title">Pending Confirmations (Session)</h3>
@@ -306,7 +352,7 @@
     </section>
 
     <section class="grid two-col">
-      <article class="card">
+      <article class="card" id="inventoryCard">
         <div class="section-head">
           <h2 data-i18n="inventory_title">Inventory</h2>
           <button id="reloadInventoryBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -334,7 +380,7 @@
         <div id="inventoryList" class="list"></div>
       </article>
 
-      <article class="card">
+      <article class="card" id="recipesCard">
         <div class="section-head">
           <h2 data-i18n="recipes_title">Recipe Recommendations</h2>
           <button id="reloadRecipesBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -344,7 +390,7 @@
     </section>
 
     <section class="grid one-col">
-      <article class="card">
+      <article class="card" id="expiringCard">
         <div class="section-head">
           <h2 data-i18n="expiring_focus_title">Expiring Items (All Storage)</h2>
           <button id="reloadExpiringFocusBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>
@@ -355,7 +401,7 @@
     </section>
 
     <section class="grid two-col">
-      <article class="card">
+      <article class="card" id="shoppingCard">
         <div class="section-head">
           <h2 data-i18n="shopping_title">Shopping Suggestions</h2>
           <div class="inline-actions">
@@ -368,7 +414,7 @@
         <div id="shoppingDraftResult" class="muted"></div>
       </article>
 
-      <article class="card">
+      <article class="card" id="notificationsCard">
         <div class="section-head">
           <h2 data-i18n="notifications_title">Notifications</h2>
           <button id="reloadNotificationsBtn" class="btn ghost" type="button" data-i18n="btn_reload">Reload</button>

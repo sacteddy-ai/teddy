@@ -72,6 +72,10 @@ body.easy .draft-action-btn {
   border-radius: 14px;
 }
 
+body.easy .stats-grid {
+  display: none;
+}
+
 .background-blobs {
   position: fixed;
   inset: 0;
@@ -157,6 +161,163 @@ body.easy .draft-action-btn {
 
 .brand-copy {
   min-width: 0;
+}
+
+.mobile-app-home {
+  margin-top: 2px;
+  margin-bottom: 14px;
+}
+
+.mobile-home-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mobile-home-head {
+  background: #fde74c;
+  border-bottom: 1.5px solid #f2dd65;
+  padding: 18px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-home-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50% 50% 48% 48% / 56% 56% 44% 44%;
+  background: #fff;
+  border: 2px solid #f4e8af;
+  box-shadow: 0 4px 12px rgba(44, 44, 44, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mobile-home-yolk {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #ff8c42;
+}
+
+.mobile-home-copy {
+  min-width: 0;
+}
+
+.mobile-home-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.mobile-home-subtitle {
+  margin: 3px 0 0;
+  color: rgba(44, 44, 44, 0.78);
+  font-size: 0.88rem;
+}
+
+.mobile-primary-actions {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-action-btn {
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.mobile-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(44, 44, 44, 0.08);
+}
+
+.mobile-action-btn.primary {
+  background: #fff9cc;
+  border-color: #f3dd62;
+}
+
+.mobile-action-btn .emoji {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: #fff;
+  border: 1.5px solid #f0ece1;
+  flex-shrink: 0;
+}
+
+.mobile-action-btn .txt {
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-action-btn .txt strong {
+  font-size: 0.98rem;
+  line-height: 1.3;
+}
+
+.mobile-action-btn .txt small {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.mobile-feature-row {
+  padding: 0 14px 14px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.feature-chip {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 8px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.feature-chip span:first-child {
+  font-size: 1rem;
+}
+
+.card.focus-jump {
+  animation: cardFlash 0.75s ease;
+}
+
+@keyframes cardFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(253, 231, 76, 0.0), var(--shadow);
+    transform: translateY(0);
+  }
+  35% {
+    box-shadow: 0 0 0 6px rgba(253, 231, 76, 0.32), var(--shadow);
+    transform: translateY(-1px);
+  }
+  100% {
+    box-shadow: var(--shadow);
+    transform: translateY(0);
+  }
 }
 
 .eyebrow {
@@ -1008,5 +1169,12 @@ body.easy .inventory-select {
 
   .review-custom {
     grid-template-columns: 1fr;
+  }
+
+}
+
+@media (min-width: 981px) {
+  .mobile-app-home {
+    max-width: 560px;
   }
 }

@@ -594,6 +594,84 @@ function applyI18n() {
   });
 }
 
+function jumpToSectionCard(cardId) {
+  const node = $(cardId);
+  if (!node) {
+    return;
+  }
+  try {
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch {
+    node.scrollIntoView();
+  }
+  node.classList.add("focus-jump");
+  setTimeout(() => {
+    node.classList.remove("focus-jump");
+  }, 900);
+}
+
+function bindMobileHomeActions() {
+  const takePhotoBtn = $("hubTakePhotoBtn");
+  if (takePhotoBtn) {
+    takePhotoBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      jumpToSectionCard("captureCard");
+      const fileInput = $("captureVisionImageInput");
+      if (fileInput) {
+        fileInput.click();
+      }
+    });
+  }
+
+  const talkBtn = $("hubTalkBtn");
+  if (talkBtn) {
+    talkBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      jumpToSectionCard("captureCard");
+      const quickTalkBtn = $("quickTalkBtn");
+      if (quickTalkBtn) {
+        quickTalkBtn.click();
+      }
+    });
+  }
+
+  const notificationsBtn = $("hubNotificationsBtn");
+  if (notificationsBtn) {
+    notificationsBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      jumpToSectionCard("notificationsCard");
+      const reloadBtn = $("reloadNotificationsBtn");
+      if (reloadBtn) {
+        reloadBtn.click();
+      }
+    });
+  }
+
+  const recipesBtn = $("hubRecipesBtn");
+  if (recipesBtn) {
+    recipesBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      jumpToSectionCard("recipesCard");
+      const reloadBtn = $("reloadRecipesBtn");
+      if (reloadBtn) {
+        reloadBtn.click();
+      }
+    });
+  }
+
+  const shoppingBtn = $("hubShoppingBtn");
+  if (shoppingBtn) {
+    shoppingBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      jumpToSectionCard("shoppingCard");
+      const reloadBtn = $("reloadShoppingBtn");
+      if (reloadBtn) {
+        reloadBtn.click();
+      }
+    });
+  }
+}
+
 function statusLabel(status) {
   const key = String(status || "").trim().toLowerCase() || "unknown";
   return STATUS_LABELS[currentLang]?.[key] ?? STATUS_LABELS.en[key] ?? key;
@@ -7739,6 +7817,8 @@ function bindEvents() {
       setGlobalError(err.message);
     }
   });
+
+  bindMobileHomeActions();
 }
 
 function init() {
